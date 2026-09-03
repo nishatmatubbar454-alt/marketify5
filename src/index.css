@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #ff7a18;
+  --color-ink: #0f0f0f;
+  --color-panel: #181818;
+  --color-panel2: #212121;
+}
+
+html {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button, a, input, select, textarea, [role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a, [role="button"] {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button:active, a:active, [role="button"]:active {
+  transform: scale(0.97);
+  transition: transform 0.05s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+

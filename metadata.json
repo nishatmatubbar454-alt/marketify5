@@ -1,0 +1,6 @@
+{
+  "name": "Marketify Video Platform & Ad Manager",
+  "description": "Video streaming platform with admin panel and toggleable ad management ensuring zero ads in the admin panel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

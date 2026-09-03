@@ -1,0 +1,121 @@
+{
+  "entities": {
+    "Video": {
+      "title": "Video",
+      "description": "Video document in Marketify platform",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Video title"
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "description": "Thumbnail URL or base64 data"
+        },
+        "embedUrl": {
+          "type": "string",
+          "description": "Embedded video player URL"
+        },
+        "sourceName": {
+          "type": "string",
+          "description": "Channel or publisher name"
+        },
+        "duration": {
+          "type": "string",
+          "description": "Duration string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "hidden", "draft"],
+          "description": "Publishing status"
+        },
+        "views": {
+          "type": "number",
+          "description": "Total view count"
+        },
+        "likes": {
+          "type": "number",
+          "description": "Total like count"
+        },
+        "commentsCount": {
+          "type": "number",
+          "description": "Total comments count"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["title", "embedUrl", "status"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "User comment on a video",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Author name"
+        },
+        "text": {
+          "type": "string",
+          "description": "Comment content"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp created"
+        }
+      },
+      "required": ["text", "createdAt"]
+    },
+    "Ad": {
+      "title": "Ad",
+      "description": "Advertisement slot configuration",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Ad title or label"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["banner_468x60", "social_bar", "in_stream", "native"],
+          "description": "Ad slot type"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["on", "off"],
+          "description": "Active state"
+        },
+        "script": {
+          "type": "string",
+          "description": "Ad snippet or script URL"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["type", "status"]
+    }
+  },
+  "firestore": {
+    "/videos/{videoId}": {
+      "schema": "Video",
+      "description": "Public video collection"
+    },
+    "/videos/{videoId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments on specific video"
+    },
+    "/ads/{adId}": {
+      "schema": "Ad",
+      "description": "Platform ad configurations"
+    }
+  }
+}
