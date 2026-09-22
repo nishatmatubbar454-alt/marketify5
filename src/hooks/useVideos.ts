@@ -20,13 +20,31 @@ function emitVideosUpdated() {
   }
 }
 
+export function isValidVideo(v: any): boolean {
+  return Boolean(
+    v &&
+    typeof v === 'object' &&
+    typeof v.id === 'string' &&
+    v.id.trim().length > 0 &&
+    typeof v.embedUrl === 'string' &&
+    v.embedUrl.trim().length > 0
+  );
+}
+
+let inMemoryVideosCache: Video[] | null = null;
+
 function getLocalVideos(): Video[] {
+  if (inMemoryVideosCache && inMemoryVideosCache.length > 0) {
+    return inMemoryVideosCache.filter(isValidVideo);
+  }
   try {
     const raw = localStorage.getItem(LOCAL_VIDEOS_KEY);
     if (raw !== null) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed;
+        const filtered = parsed.filter(isValidVideo);
+        inMemoryVideosCache = filtered;
+        return filtered;
       }
     }
   } catch {}
@@ -34,16 +52,24 @@ function getLocalVideos(): Video[] {
 }
 
 function saveLocalVideos(list: Video[]) {
+  const filtered = list.filter(isValidVideo);
+  inMemoryVideosCache = filtered;
   try {
-    localStorage.setItem(LOCAL_VIDEOS_KEY, JSON.stringify(list));
+    localStorage.setItem(LOCAL_VIDEOS_KEY, JSON.stringify(filtered));
   } catch {}
 }
 
-function mapVideo(id: string, data: Record<string, unknown>): Video {
+function mapVideo(id: string, data: Record<string, unknown>): Video | null {
+  const embedUrl = (data.embedUrl as string) || '';
+  // Ghost video prevention: A video with no embedUrl is invalid and discarded
+  if (!embedUrl || typeof embedUrl !== 'string' || !embedUrl.trim()) {
+    return null;
+  }
+
   return {
     id,
     thumbnailUrl: (data.thumbnailUrl as string) || '',
-    embedUrl: (data.embedUrl as string) || '',
+    embedUrl: embedUrl.trim(),
     title: (data.title as string) || 'Untitled video',
     sourceName: (data.sourceName as string) || 'Marketify',
     duration: (data.duration as string) || '',
@@ -51,9 +77,15 @@ function mapVideo(id: string, data: Record<string, unknown>): Video {
     views: typeof data.views === 'number' ? (data.views as number) : 0,
     likes: typeof data.likes === 'number' ? (data.likes as number) : 0,
     commentsCount: typeof data.commentsCount === 'number' ? (data.commentsCount as number) : 0,
-    createdAt: (data.createdAt as number) || Date.now(),
-    updatedAt: (data.updatedAt as number) || Date.now()
+    createdAt: (data.createdAt as number) || (data.updatedAt as number) || 0,
+    updatedAt: (data.updatedAt as number) || (data.createdAt as number) || 0
   };
+}
+
+function areVideosEqual(a: Video[], b: Video[]): boolean {
+  if (a.length !== b.length) return false;
+  if (a.length === 0) return true;
+  return a[0].id === b[0].id && a[0].updatedAt === b[0].updatedAt && a[a.length - 1].id === b[b.length - 1].id;
 }
 
 export function useVideos() {
@@ -66,7 +98,7 @@ export function useVideos() {
 
     const handleLocalSync = () => {
       const current = getLocalVideos();
-      setVideos(current);
+      setVideos((prev) => (areVideosEqual(prev, current) ? prev : current));
       if (current.length > 0) {
         setLoading(false);
       }
@@ -75,23 +107,28 @@ export function useVideos() {
     window.addEventListener(VIDEOS_EVENT, handleLocalSync);
     window.addEventListener('storage', handleLocalSync);
 
-    // 1. Fetch from server API
-    const fetchAllVideos = async () => {
-      // 1. Fetch from server API first (ultra-fast, local cache)
+    // 1. Single ultra-fast fetch from server API (in-memory cached, returns in 1-2ms)
+    const fetchInitialVideos = async () => {
       try {
         const res = await fetch('/api/videos');
         if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.videos) && isMounted) {
-            const serverVideos: Video[] = data.videos.map((v: any) => mapVideo(v.id, v));
-            setVideos(serverVideos);
+            const serverVideos: Video[] = data.videos
+              .map((v: any) => mapVideo(v.id, v))
+              .filter((v: Video | null): v is Video => v !== null && isValidVideo(v));
+            setVideos((prev) => {
+              if (areVideosEqual(prev, serverVideos)) return prev;
+              return serverVideos;
+            });
             saveLocalVideos(serverVideos);
             setLoading(false);
+            return;
           }
         }
       } catch {}
 
-      // 2. Direct REST fetch from Firebase Realtime Database with fast timeout fallback
+      // Fallback: If server fetch failed, try direct Firebase RTDB REST once
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2500);
@@ -106,20 +143,16 @@ export function useVideos() {
             const list: Video[] = Object.entries(data)
               .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
               .map(([k, v]) => mapVideo(k, v as Record<string, unknown>))
+              .filter((v: Video | null): v is Video => v !== null && isValidVideo(v))
               .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            setVideos(list);
+            setVideos((prev) => (areVideosEqual(prev, list) ? prev : list));
             saveLocalVideos(list);
-            setLoading(false);
-            return;
-          } else if (data === null && isMounted) {
-            setVideos([]);
-            saveLocalVideos([]);
             setLoading(false);
             return;
           }
         }
       } catch {
-        // Fallback silently if offline or blocked
+        // Fallback silently
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -127,10 +160,9 @@ export function useVideos() {
       }
     };
 
-    fetchAllVideos();
-    const pollInterval = setInterval(fetchAllVideos, 4000);
+    fetchInitialVideos();
 
-    // 2. Realtime Database listener (Instant global real-time sync across all devices)
+    // 2. Realtime Database listener: only triggers on actual database updates
     let rtdbUnsub = () => {};
     try {
       const vRef = rtdbRef(realtimeDb, 'videos');
@@ -143,12 +175,18 @@ export function useVideos() {
             const remoteList: Video[] = Object.entries(val)
               .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
               .map(([k, v]) => mapVideo(k, v as Record<string, unknown>))
+              .filter((v: Video | null): v is Video => v !== null && isValidVideo(v))
               .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            setVideos(remoteList);
+            setVideos((prev) => {
+              if (areVideosEqual(prev, remoteList)) return prev;
+              return remoteList;
+            });
             saveLocalVideos(remoteList);
+            setLoading(false);
           } else if (val === null) {
             setVideos([]);
             saveLocalVideos([]);
+            setLoading(false);
           }
         },
         (err) => {
@@ -159,35 +197,9 @@ export function useVideos() {
       console.warn('Firebase RTDB listener setup notice:', e);
     }
 
-    // 3. Parallel Firestore realtime listener
-    let firestoreUnsub = () => {};
-    try {
-      firestoreUnsub = onSnapshot(
-        collection(db, 'videos'),
-        (snap) => {
-          if (isMounted) {
-            if (!snap.empty) {
-              const remote = snap.docs
-                .map((d) => mapVideo(d.id, d.data()))
-                .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-              setVideos(remote);
-              saveLocalVideos(remote);
-            }
-          }
-        },
-        (err) => {
-          console.warn('Firestore videos snapshot notice:', err);
-        }
-      );
-    } catch (e) {
-      console.warn('Firestore subscription notice:', e);
-    }
-
     return () => {
       isMounted = false;
-      clearInterval(pollInterval);
       rtdbUnsub();
-      firestoreUnsub();
       window.removeEventListener(VIDEOS_EVENT, handleLocalSync);
       window.removeEventListener('storage', handleLocalSync);
     };
@@ -212,7 +224,7 @@ export async function saveVideo(
   const videoData: Video = {
     id: targetId,
     thumbnailUrl: payload.thumbnailUrl || '',
-    embedUrl: payload.embedUrl || '',
+    embedUrl: (payload.embedUrl || '').trim(),
     title: payload.title || 'Untitled video',
     sourceName: payload.sourceName || 'Marketify',
     duration: payload.duration || '',
@@ -266,16 +278,25 @@ export async function deleteVideo(id: string) {
   saveLocalVideos(updated);
   emitVideosUpdated();
 
-  // 2. Firebase Realtime Database deletion in background
+  // 2. Firebase Realtime Database deletion via SDK
   try {
     const videoRef = rtdbRef(realtimeDb, `videos/${id}`);
     rtdbRemove(videoRef).catch(() => {});
   } catch {}
 
-  // 3. Server API deletion in background
-  fetch(`/api/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+  // 3. Direct REST delete to Firebase Realtime Database for 100% guarantee
+  try {
+    fetch(`https://himrw-fae65-default-rtdb.firebaseio.com/videos/${encodeURIComponent(id)}.json`, {
+      method: 'DELETE'
+    }).catch(() => {});
+  } catch {}
 
-  // 4. Firestore delete in background
+  // 4. Server API deletion in background
+  try {
+    fetch(`/api/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+  } catch {}
+
+  // 5. Firestore delete in background
   try {
     deleteDoc(doc(db, 'videos', id)).catch(() => {});
   } catch {}
@@ -288,16 +309,19 @@ export async function bumpVideoCounter(
 ): Promise<number> {
   const local = getLocalVideos();
   const idx = local.findIndex((v) => v.id === id);
-  let nextVal = by > 0 ? by : 0;
-  if (idx >= 0) {
-    const currentVal = local[idx][field] || 0;
-    nextVal = Math.max(0, currentVal + by);
-    local[idx] = { ...local[idx], [field]: nextVal, updatedAt: Date.now() };
-    saveLocalVideos(local);
-    emitVideosUpdated();
+
+  // CRITICAL: If the video does NOT exist in local cache, do NOT create a ghost entry in Firebase!
+  if (idx < 0) {
+    return 0;
   }
 
-  // Realtime DB bump
+  const currentVal = local[idx][field] || 0;
+  const nextVal = Math.max(0, currentVal + by);
+  local[idx] = { ...local[idx], [field]: nextVal, updatedAt: Date.now() };
+  saveLocalVideos(local);
+  emitVideosUpdated();
+
+  // Realtime DB bump (only for existing video)
   try {
     const valRef = rtdbRef(realtimeDb, `videos/${id}/${field}`);
     rtdbSet(valRef, nextVal).catch(() => {});

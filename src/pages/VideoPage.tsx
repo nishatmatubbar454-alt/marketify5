@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { BookmarkIcon, HeartIcon, Share2Icon } from 'lucide-react';
 import { Header } from '../components/Header';
 import { BannerAd } from '../components/BannerAd';
@@ -9,9 +9,12 @@ import { bumpVideoCounter, useVideos } from '../hooks/useVideos';
 import { formatViews, timeAgo } from '../utils/format';
 import { shareVideo } from '../utils/share';
 import { addHistory, getFavorites, getHistory, toggleFavorite } from '../utils/helpers';
+import type { Video } from '../types';
 
 export function VideoPage() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const stateVideo = (location.state as { video?: Video } | null)?.video;
   const { videos, loading, error } = useVideos();
 
   const [liked, setLiked] = useState(false);
@@ -19,7 +22,25 @@ export function VideoPage() {
   const [toast, setToast] = useState('');
   const [optimisticLikes, setOptimisticLikes] = useState<number | null>(null);
 
-  const video = useMemo(() => videos.find((v) => v.id === id), [videos, id]);
+  const [relatedLimit, setRelatedLimit] = useState(12);
+
+  // Immediate video resolution: If passed via state or localStorage, available in 0ms!
+  const video = useMemo(() => {
+    if (stateVideo && stateVideo.id === id) return stateVideo;
+    const found = videos.find((v) => v.id === id);
+    if (found) return found;
+    try {
+      const raw = localStorage.getItem('mk-local-videos');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.find((v: Video) => v.id === id) || null;
+        }
+      }
+    } catch {}
+    return null;
+  }, [stateVideo, videos, id]);
+
   const related = useMemo(() => {
     const active = videos.filter((v) => v.status === 'active' && v.id !== id);
     const history = getHistory();
@@ -34,17 +55,24 @@ export function VideoPage() {
     ];
   }, [videos, id]);
 
+  const visibleRelated = useMemo(() => {
+    return related.slice(0, relatedLimit);
+  }, [related, relatedLimit]);
+
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
+
   useEffect(() => {
-    window.scrollTo({ top: 0 });
-    if (!id) return;
+    if (!id || !video || !video.embedUrl) return;
     setLiked(localStorage.getItem(`mk-like-${id}`) === '1');
     setFavorite(getFavorites().includes(id));
     setOptimisticLikes(null);
     addHistory(id);
-  }, [id]);
+  }, [id, video]);
 
   useEffect(() => {
-    if (!id || !video) return;
+    if (!id || !video || !video.embedUrl) return;
     const key = `mk-viewed-${id}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, '1');
@@ -88,7 +116,7 @@ export function VideoPage() {
           {loading && !video ? (
             <div className="w-full animate-pulse bg-black/10 dark:bg-white/10" style={{ aspectRatio: '16 / 9' }} />
           ) : video ? (
-            <EmbedPlayer src={video.embedUrl} title={video.title} />
+            <EmbedPlayer src={video.embedUrl} title={video.title} poster={video.thumbnailUrl} />
           ) : (
             <div className="grid aspect-video place-items-center px-6 text-center">
               <div>
@@ -176,17 +204,29 @@ export function VideoPage() {
         </div>
 
         <div className="mt-2 grid grid-cols-2 gap-2">
-          {related.map((v, index) => (
+          {visibleRelated.map((v, index) => (
             <React.Fragment key={v.id}>
               <RelatedVideoCard video={v} />
-              {(index + 1) % 2 === 0 && index !== related.length - 1 && (
-                <div className="col-span-2 py-1">
+              {(index + 1) % 2 === 0 && (
+                <div className="col-span-2">
                   <BannerAd />
                 </div>
               )}
             </React.Fragment>
           ))}
         </div>
+
+        {related.length > visibleRelated.length && (
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => setRelatedLimit((prev) => prev + 12)}
+              className="rounded-lg bg-black/5 px-4 py-2 text-xs font-semibold text-brand hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
+            >
+              আরও সম্পর্কিত ভিডিও দেখুন ({related.length - visibleRelated.length}টি বাকি)
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );

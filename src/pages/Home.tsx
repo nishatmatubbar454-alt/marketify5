@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BannerAd } from '../components/BannerAd';
@@ -12,6 +12,12 @@ export function Home() {
   const q = (searchParams.get('q') || '').toLowerCase();
   const history = getHistory();
   const historySet = useMemo(() => new Set(history), [history]);
+  const [visibleCount, setVisibleCount] = useState(16);
+  const observerTargetRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleCount(16);
+  }, [q]);
 
   const list = useMemo(() => {
     const active = videos.filter((v) => v.status === 'active');
@@ -57,6 +63,25 @@ export function Home() {
         return (b.createdAt || 0) - (a.createdAt || 0);
       });
   }, [videos, q, historySet, history]);
+
+  const visibleList = useMemo(() => {
+    return list.slice(0, visibleCount);
+  }, [list, visibleCount]);
+
+  useEffect(() => {
+    const target = observerTargetRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && visibleCount < list.length) {
+          setVisibleCount((prev) => Math.min(prev + 16, list.length));
+        }
+      },
+      { rootMargin: '300px' }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [visibleCount, list.length]);
 
   return (
     <div className="min-h-screen w-full bg-white dark:bg-ink">
@@ -114,16 +139,26 @@ export function Home() {
           </div>
         )}
 
-        <div className="space-y-5">
-          {list.map((video) => (
-            <React.Fragment key={video.id}>
-              <VideoCard video={video} />
-              <div className="py-1">
-                <BannerAd />
-              </div>
-            </React.Fragment>
+        <div className="space-y-3">
+          {visibleList.map((video, index) => (
+            <div key={video.id} className="space-y-1.5">
+              <VideoCard video={video} priority={index < 2} />
+              <BannerAd />
+            </div>
           ))}
         </div>
+
+        {list.length > visibleList.length && (
+          <div ref={observerTargetRef} className="py-6 text-center">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((prev) => Math.min(prev + 16, list.length))}
+              className="rounded-xl bg-black/5 px-6 py-2.5 text-xs font-semibold text-brand hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors"
+            >
+              আরও ভিডিও দেখুন ({list.length - visibleList.length}টি বাকি)
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );

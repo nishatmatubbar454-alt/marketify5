@@ -73,7 +73,8 @@ export function Header() {
 
   const handleSelectVideo = (videoId: string) => {
     setSearchOpen(false);
-    navigate(`/video/${videoId}`);
+    const targetVideo = videos.find((v) => v.id === videoId);
+    navigate(`/video/${videoId}`, { state: { video: targetVideo } });
   };
 
   const handleClearSearch = () => {

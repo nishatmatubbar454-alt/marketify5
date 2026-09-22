@@ -6,7 +6,7 @@ import { formatViews, timeAgo } from '../utils/format';
 import { shareVideo } from '../utils/share';
 import { getFavorites, toggleFavorite } from '../utils/helpers';
 
-export function VideoCard({ video }: { video: Video }) {
+export const VideoCard = React.memo(function VideoCard({ video, priority = false }: { video: Video; priority?: boolean }) {
   const [favorite, setFavorite] = useState(() => getFavorites().includes(video.id));
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState('');
@@ -26,7 +26,8 @@ export function VideoCard({ video }: { video: Video }) {
     <article className="relative">
       <Link
         to={`/video/${video.id}`}
-        className="group block overflow-hidden rounded-xl bg-black"
+        state={{ video }}
+        className="group block overflow-hidden rounded-xl bg-black cursor-pointer select-none transition-transform duration-75 active:scale-[0.98]"
         aria-label={video.title}
       >
         <div className="relative w-full" style={{ aspectRatio: '16 / 9' }}>
@@ -34,22 +35,24 @@ export function VideoCard({ video }: { video: Video }) {
             <img
               src={video.thumbnailUrl}
               alt=""
-              loading="lazy"
-              className="absolute inset-0 h-full w-full object-cover"
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : 'auto'}
+              decoding="async"
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-150"
             />
           ) : (
-            <div className="absolute inset-0 bg-neutral-800" />
+            <div className="pointer-events-none absolute inset-0 bg-neutral-800" />
           )}
-          <span className="absolute inset-0 grid place-items-center">
+          <span className="pointer-events-none absolute inset-0 grid place-items-center">
             <svg viewBox="0 0 24 24" className="h-14 w-14 drop-shadow-lg" aria-hidden="true">
               <path d="M8 5.5v13l11-6.5-11-6.5z" fill="rgba(255,255,255,0.92)" />
             </svg>
           </span>
-          <span className="absolute bottom-2 left-3 text-[13px] font-medium text-white drop-shadow">
+          <span className="pointer-events-none absolute bottom-2 left-3 text-[13px] font-medium text-white drop-shadow">
             {formatViews(video.views)}
           </span>
           {video.duration && (
-            <span className="absolute bottom-2 right-3 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
+            <span className="pointer-events-none absolute bottom-2 right-3 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
               {video.duration}
             </span>
           )}
@@ -74,6 +77,7 @@ export function VideoCard({ video }: { video: Video }) {
       <div className="mt-3 flex items-start gap-3 px-1">
         <Link
           to={`/video/${video.id}`}
+          state={{ video }}
           aria-hidden="true"
           tabIndex={-1}
           className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-neutral-900 text-sm font-bold uppercase text-white ring-1 ring-black/10 dark:ring-white/10 active:scale-95 transition-transform"
@@ -83,7 +87,8 @@ export function VideoCard({ video }: { video: Video }) {
         <div className="min-w-0 flex-1">
           <Link
             to={`/video/${video.id}`}
-            className="clamp-2 text-[16px] font-normal leading-[22px] text-[#0f0f0f] dark:text-white hover:text-brand transition-colors"
+            state={{ video }}
+            className="clamp-2 text-[16px] font-normal leading-[22px] text-[#0f0f0f] dark:text-white hover:text-brand transition-colors active:opacity-75"
           >
             {video.title}
           </Link>
@@ -123,6 +128,7 @@ export function VideoCard({ video }: { video: Video }) {
               </button>
               <Link
                 to={`/video/${video.id}`}
+                state={{ video }}
                 className="block w-full border-t border-black/5 px-4 py-2.5 text-left text-sm text-[#0f0f0f] hover:bg-black/5 dark:border-white/10 dark:text-white dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15"
               >
                 Open video
@@ -138,4 +144,4 @@ export function VideoCard({ video }: { video: Video }) {
       )}
     </article>
   );
-}
+});

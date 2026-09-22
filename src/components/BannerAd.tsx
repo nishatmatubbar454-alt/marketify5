@@ -2,7 +2,7 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAds } from '../hooks/useAds';
 
-export function BannerAd() {
+export const BannerAd = React.memo(function BannerAd() {
   const { banner } = useAds();
   const { pathname } = useLocation();
   const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/erfan');
@@ -16,19 +16,20 @@ export function BannerAd() {
   const srcdoc = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0;overflow:hidden;background:transparent;display:flex;justify-content:center;align-items:center;height:100%}</style></head><body>${script}</body></html>`;
 
   return (
-    <div className="w-full overflow-hidden my-3 flex justify-center">
-      <div className="mx-auto w-full max-w-[468px] overflow-hidden rounded-md flex justify-center bg-black/5 dark:bg-white/5 p-1">
+    <div className="w-full overflow-hidden flex justify-center">
+      <div className="w-full max-w-[468px] overflow-hidden rounded flex justify-center">
         <iframe
           key={script}
           srcDoc={srcdoc}
           title="Advertisement"
           width={468}
-          height={68}
+          height={60}
+          loading="lazy"
           sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation allow-presentation"
           scrolling="no"
-          className="block h-[68px] w-[468px] border-0"
+          className="block h-[60px] w-full max-w-[468px] border-0"
         />
       </div>
     </div>
   );
-}
+});

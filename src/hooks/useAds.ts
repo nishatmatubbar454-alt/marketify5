@@ -85,7 +85,6 @@ export function useAds() {
     };
 
     fetchServerAds();
-    const pollInterval = setInterval(fetchServerAds, 4000);
 
     // 2. Realtime Database listener
     let rtdbUnsub = () => {};
@@ -133,7 +132,6 @@ export function useAds() {
 
     return () => {
       isMounted = false;
-      clearInterval(pollInterval);
       rtdbUnsub();
       firestoreUnsub();
       window.removeEventListener(ADS_EVENT, handleLocalSync);

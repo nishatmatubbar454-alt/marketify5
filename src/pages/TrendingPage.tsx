@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Header } from '../components/Header';
 import { BannerAd } from '../components/BannerAd';
 import { VideoCard } from '../components/VideoCard';
@@ -7,9 +7,17 @@ import { FlameIcon } from 'lucide-react';
 
 export function TrendingPage() {
   const { videos, loading, error } = useVideos();
-  const trendingList = [...videos]
-    .filter((v) => v.status === 'active')
-    .sort((a, b) => b.views - a.views);
+  const [visibleCount, setVisibleCount] = useState(16);
+
+  const trendingList = useMemo(() => {
+    return [...videos]
+      .filter((v) => v.status === 'active')
+      .sort((a, b) => b.views - a.views);
+  }, [videos]);
+
+  const visibleList = useMemo(() => {
+    return trendingList.slice(0, visibleCount);
+  }, [trendingList, visibleCount]);
 
   return (
     <div className="min-h-screen w-full bg-white dark:bg-ink">
@@ -47,16 +55,26 @@ export function TrendingPage() {
           </div>
         )}
 
-        <div className="space-y-5">
-          {trendingList.map((video) => (
-            <React.Fragment key={video.id}>
-              <VideoCard video={video} />
-              <div className="py-1">
-                <BannerAd />
-              </div>
-            </React.Fragment>
+        <div className="space-y-3">
+          {visibleList.map((video, index) => (
+            <div key={video.id} className="space-y-1.5">
+              <VideoCard video={video} priority={index < 2} />
+              <BannerAd />
+            </div>
           ))}
         </div>
+
+        {trendingList.length > visibleList.length && (
+          <div className="py-6 text-center">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((prev) => Math.min(prev + 16, trendingList.length))}
+              className="rounded-xl bg-black/5 px-6 py-2.5 text-xs font-semibold text-brand hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors"
+            >
+              আরও ট্রেন্ডিং ভিডিও দেখুন ({trendingList.length - visibleList.length}টি বাকি)
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );

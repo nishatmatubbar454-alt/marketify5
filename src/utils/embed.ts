@@ -21,6 +21,18 @@ export function extractEmbedSrc(input: string): string {
   } else if (candidate.includes('youtube.com/shorts/')) {
     const match = candidate.match(/shorts\/([^?&/]+)/);
     if (match) candidate = `https://www.youtube.com/embed/${match[1]}`;
+  } else if (candidate.includes('xnxx.tv/')) {
+    candidate = candidate.replace(/xnxx\.tv/g, 'xnxx.com');
+  } else if (candidate.includes('xnxx.com/video-') && !candidate.includes('/embedframe/')) {
+    const match = candidate.match(/xnxx\.com\/video-([a-zA-Z0-9]+)/);
+    if (match && match[1]) {
+      candidate = `https://www.xnxx.com/embedframe/${match[1]}`;
+    }
+  } else if (candidate.includes('xvideos.com/video') && !candidate.includes('/embedframe/')) {
+    const match = candidate.match(/xvideos\.com\/video\.?([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      candidate = `https://www.xvideos.com/embedframe/${match[1]}`;
+    }
   }
 
   if (candidate.startsWith('//')) candidate = 'https:' + candidate;

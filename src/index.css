@@ -10,7 +10,6 @@
 html {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-  scroll-behavior: smooth;
   text-rendering: optimizeLegibility;
 }
 
@@ -31,9 +30,8 @@ button, a, [role="button"] {
   -webkit-user-select: none;
 }
 
-button:active, a:active, [role="button"]:active {
-  transform: scale(0.97);
-  transition: transform 0.05s cubic-bezier(0.4, 0, 0.2, 1);
+button:active, [role="button"]:active {
+  opacity: 0.85;
 }
 
 .clamp-2 {

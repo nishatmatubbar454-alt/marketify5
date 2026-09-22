@@ -44,14 +44,12 @@ export function HistoryPage() {
           </div>
         )}
 
-        <div className="space-y-5">
-          {historyVideos.map((video) => (
-            <React.Fragment key={video.id}>
-              <VideoCard video={video} />
-              <div className="py-1">
-                <BannerAd />
-              </div>
-            </React.Fragment>
+        <div className="space-y-3">
+          {historyVideos.map((video, index) => (
+            <div key={video.id} className="space-y-1.5">
+              <VideoCard video={video} priority={index < 2} />
+              <BannerAd />
+            </div>
           ))}
         </div>
       </main>

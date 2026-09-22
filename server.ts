@@ -75,41 +75,65 @@ const INITIAL_VIDEOS: Array<{
   updatedAt: number;
 }> = [];
 
+let inMemoryServerVideos: any[] | null = null;
+let inMemoryServerAds: any[] | null = null;
+
 function readVideos() {
+  if (inMemoryServerVideos !== null) {
+    return inMemoryServerVideos;
+  }
   try {
     if (fs.existsSync(VIDEOS_FILE)) {
       const data = fs.readFileSync(VIDEOS_FILE, 'utf-8');
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        inMemoryServerVideos = parsed.filter(
+          (v: any) => v && v.id && typeof v.embedUrl === 'string' && v.embedUrl.trim().length > 0
+        );
+        return inMemoryServerVideos;
+      }
     }
   } catch (err) {
     console.error('Error reading videos:', err);
   }
-  return INITIAL_VIDEOS;
+  inMemoryServerVideos = INITIAL_VIDEOS;
+  return inMemoryServerVideos;
 }
 
 function writeVideos(videos: any[]) {
+  const valid = videos.filter(
+    (v: any) => v && v.id && typeof v.embedUrl === 'string' && v.embedUrl.trim().length > 0
+  );
+  inMemoryServerVideos = valid;
   try {
-    fs.writeFileSync(VIDEOS_FILE, JSON.stringify(videos, null, 2), 'utf-8');
+    fs.writeFileSync(VIDEOS_FILE, JSON.stringify(valid, null, 2), 'utf-8');
   } catch (err) {
     console.error('Error writing videos:', err);
   }
 }
 
 function readAds() {
+  if (inMemoryServerAds !== null) {
+    return inMemoryServerAds;
+  }
   try {
     if (fs.existsSync(ADS_FILE)) {
       const data = fs.readFileSync(ADS_FILE, 'utf-8');
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        inMemoryServerAds = parsed;
+        return inMemoryServerAds;
+      }
     }
   } catch (err) {
     console.error('Error reading ads:', err);
   }
-  return INITIAL_ADS;
+  inMemoryServerAds = INITIAL_ADS;
+  return inMemoryServerAds;
 }
 
 function writeAds(ads: any[]) {
+  inMemoryServerAds = ads;
   try {
     fs.writeFileSync(ADS_FILE, JSON.stringify(ads, null, 2), 'utf-8');
   } catch (err) {
@@ -129,7 +153,7 @@ async function syncFromFirebase() {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
     const res = await fetch(`${RTDB_BASE_URL}/videos.json`, {
       signal: controller.signal
@@ -138,12 +162,29 @@ async function syncFromFirebase() {
     if (res.ok) {
       const data = await res.json();
       if (data && typeof data === 'object') {
-        const list = Object.entries(data)
-          .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
-          .map(([id, val]: [string, any]) => ({ id, ...(val || {}) }))
-          .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
-        writeVideos(list);
-        return list;
+        const validList: any[] = [];
+        const corruptedKeys: string[] = [];
+
+        for (const [id, val] of Object.entries(data)) {
+          if (!val || typeof val !== 'object' || /^\d+$/.test(id)) continue;
+          const v = val as any;
+          if (!v.embedUrl || typeof v.embedUrl !== 'string' || !v.embedUrl.trim()) {
+            corruptedKeys.push(id);
+            continue;
+          }
+          validList.push({ id, ...v });
+        }
+
+        // Purge corrupted/empty keys permanently from Firebase
+        if (corruptedKeys.length > 0) {
+          for (const badId of corruptedKeys) {
+            deleteFromFirebase(badId).catch(() => {});
+          }
+        }
+
+        validList.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
+        writeVideos(validList);
+        return validList;
       } else if (data === null) {
         writeVideos([]);
         return [];
@@ -156,10 +197,10 @@ async function syncFromFirebase() {
 }
 
 async function syncToFirebase(videoId: string, videoObj: any) {
-  if (Date.now() - lastFirebaseSyncError < FIREBASE_RETRY_COOLDOWN) return;
+  if (!videoObj || !videoObj.embedUrl || typeof videoObj.embedUrl !== 'string') return;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
     await fetch(`${RTDB_BASE_URL}/videos/${encodeURIComponent(videoId)}.json`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -172,16 +213,15 @@ async function syncToFirebase(videoId: string, videoObj: any) {
 }
 
 async function deleteFromFirebase(videoId: string) {
-  if (Date.now() - lastFirebaseSyncError < FIREBASE_RETRY_COOLDOWN) return;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
     await fetch(`${RTDB_BASE_URL}/videos/${encodeURIComponent(videoId)}.json`, {
       method: 'DELETE',
       signal: controller.signal
     }).finally(() => clearTimeout(timeoutId));
-  } catch {
-    lastFirebaseSyncError = Date.now();
+  } catch (err) {
+    console.error('Failed to delete from Firebase RTDB:', err);
   }
 }
 
@@ -246,9 +286,13 @@ async function deleteAdFromFirebase(adId: string) {
   }
 }
 
-// Background initial sync
+// Periodic background sync every 60s
 syncFromFirebase();
 syncAdsFromFirebase();
+setInterval(() => {
+  syncFromFirebase().catch(() => {});
+  syncAdsFromFirebase().catch(() => {});
+}, 60000);
 
 async function startServer() {
   const app = express();
@@ -256,12 +300,16 @@ async function startServer() {
 
   // --- API Routes ---
   app.get('/api/videos', (req, res) => {
-    // Return cached videos instantly without blocking
+    // Return cached videos instantly from memory in 1ms
     const videos = readVideos();
+    res.setHeader('Cache-Control', 'public, max-age=5, stale-while-revalidate=30');
     res.json({ success: true, videos });
+  });
 
-    // Trigger background sync
-    syncFromFirebase().catch(() => {});
+  app.get('/api/ads', (req, res) => {
+    const ads = readAds();
+    res.setHeader('Cache-Control', 'public, max-age=10, stale-while-revalidate=60');
+    res.json({ success: true, ads });
   });
 
   app.post('/api/videos', (req, res) => {
@@ -321,7 +369,7 @@ async function startServer() {
       syncToFirebase(id, videos[idx]);
       return res.json({ success: true, count: videos[idx][field] });
     }
-    res.json({ success: true });
+    return res.status(404).json({ success: false, error: 'Video not found' });
   });
 
   app.get('/api/ads', (req, res) => {
