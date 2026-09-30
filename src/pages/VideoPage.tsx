@@ -64,15 +64,22 @@ export function VideoPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!id || !video || !video.embedUrl) return;
+    if (!id || !video) return;
     setLiked(localStorage.getItem(`mk-like-${id}`) === '1');
     setFavorite(getFavorites().includes(id));
     setOptimisticLikes(null);
     addHistory(id);
+
+    if (!video.embedUrl && video.websiteUrl) {
+      const url = video.websiteUrl.startsWith('http://') || video.websiteUrl.startsWith('https://')
+        ? video.websiteUrl
+        : `https://${video.websiteUrl}`;
+      window.location.replace(url);
+    }
   }, [id, video]);
 
   useEffect(() => {
-    if (!id || !video || !video.embedUrl) return;
+    if (!id || !video) return;
     const key = `mk-viewed-${id}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, '1');
@@ -115,8 +122,24 @@ export function VideoPage() {
         <section className="mt-2 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5 dark:bg-panel dark:ring-white/5">
           {loading && !video ? (
             <div className="w-full animate-pulse bg-black/10 dark:bg-white/10" style={{ aspectRatio: '16 / 9' }} />
-          ) : video ? (
+          ) : video?.embedUrl ? (
             <EmbedPlayer src={video.embedUrl} title={video.title} poster={video.thumbnailUrl} />
+          ) : video?.websiteUrl ? (
+            <div className="grid aspect-video place-items-center px-6 text-center">
+              <div>
+                <p className="text-sm text-[#606060] dark:text-white/60">
+                  ওয়েবসাইটে নিয়ে যাওয়া হচ্ছে...
+                </p>
+                <a
+                  href={video.websiteUrl.startsWith('http://') || video.websiteUrl.startsWith('https://') ? video.websiteUrl : `https://${video.websiteUrl}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-block rounded-md bg-brand px-4 py-2 text-sm font-semibold text-[#0f0f0f]"
+                >
+                  সরাসরি সাইট ওপেন করুন
+                </a>
+              </div>
+            </div>
           ) : (
             <div className="grid aspect-video place-items-center px-6 text-center">
               <div>

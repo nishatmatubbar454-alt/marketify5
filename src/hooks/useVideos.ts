@@ -21,14 +21,13 @@ function emitVideosUpdated() {
 }
 
 export function isValidVideo(v: any): boolean {
-  return Boolean(
-    v &&
-    typeof v === 'object' &&
-    typeof v.id === 'string' &&
-    v.id.trim().length > 0 &&
-    typeof v.embedUrl === 'string' &&
-    v.embedUrl.trim().length > 0
-  );
+  if (!v || typeof v !== 'object') return false;
+  if (typeof v.id !== 'string' || !v.id.trim()) return false;
+  const hasEmbed = typeof v.embedUrl === 'string' && v.embedUrl.trim().length > 0;
+  const hasWebsite =
+    (typeof v.websiteUrl === 'string' && v.websiteUrl.trim().length > 0) ||
+    (typeof v.targetUrl === 'string' && v.targetUrl.trim().length > 0);
+  return hasEmbed || hasWebsite;
 }
 
 let inMemoryVideosCache: Video[] | null = null;
@@ -61,8 +60,9 @@ function saveLocalVideos(list: Video[]) {
 
 function mapVideo(id: string, data: Record<string, unknown>): Video | null {
   const embedUrl = (data.embedUrl as string) || '';
-  // Ghost video prevention: A video with no embedUrl is invalid and discarded
-  if (!embedUrl || typeof embedUrl !== 'string' || !embedUrl.trim()) {
+  const websiteUrl = (data.websiteUrl as string) || (data.targetUrl as string) || '';
+
+  if (!embedUrl.trim() && !websiteUrl.trim()) {
     return null;
   }
 
@@ -70,6 +70,7 @@ function mapVideo(id: string, data: Record<string, unknown>): Video | null {
     id,
     thumbnailUrl: (data.thumbnailUrl as string) || '',
     embedUrl: embedUrl.trim(),
+    websiteUrl: websiteUrl.trim(),
     title: (data.title as string) || 'Untitled video',
     sourceName: (data.sourceName as string) || 'Marketify',
     duration: (data.duration as string) || '',
@@ -225,6 +226,7 @@ export async function saveVideo(
     id: targetId,
     thumbnailUrl: payload.thumbnailUrl || '',
     embedUrl: (payload.embedUrl || '').trim(),
+    websiteUrl: (payload.websiteUrl || '').trim(),
     title: payload.title || 'Untitled video',
     sourceName: payload.sourceName || 'Marketify',
     duration: payload.duration || '',

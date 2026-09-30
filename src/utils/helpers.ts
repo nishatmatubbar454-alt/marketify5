@@ -44,9 +44,15 @@ export function getHistory(): string[] {
 }
 
 export function addHistory(id: string) {
-  const list = getHistory().filter((item) => item !== id);
-  const next = [id, ...list].slice(0, 50);
-  localStorage.setItem('mk-history', JSON.stringify(next));
+  if (!id) return;
+  try {
+    const list = getHistory().filter((item) => item !== id);
+    const next = [id, ...list].slice(0, 100);
+    localStorage.setItem('mk-history', JSON.stringify(next));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('mk-history-updated', { detail: { id } }));
+    }
+  } catch {}
 }
 
 export function isDirectLink(url: string): boolean {

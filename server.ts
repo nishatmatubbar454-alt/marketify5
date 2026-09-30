@@ -78,6 +78,15 @@ const INITIAL_VIDEOS: Array<{
 let inMemoryServerVideos: any[] | null = null;
 let inMemoryServerAds: any[] | null = null;
 
+function isValidServerVideo(v: any) {
+  if (!v || !v.id) return false;
+  const hasEmbed = typeof v.embedUrl === 'string' && v.embedUrl.trim().length > 0;
+  const hasWebsite =
+    (typeof v.websiteUrl === 'string' && v.websiteUrl.trim().length > 0) ||
+    (typeof v.targetUrl === 'string' && v.targetUrl.trim().length > 0);
+  return hasEmbed || hasWebsite;
+}
+
 function readVideos() {
   if (inMemoryServerVideos !== null) {
     return inMemoryServerVideos;
@@ -87,9 +96,7 @@ function readVideos() {
       const data = fs.readFileSync(VIDEOS_FILE, 'utf-8');
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed)) {
-        inMemoryServerVideos = parsed.filter(
-          (v: any) => v && v.id && typeof v.embedUrl === 'string' && v.embedUrl.trim().length > 0
-        );
+        inMemoryServerVideos = parsed.filter(isValidServerVideo);
         return inMemoryServerVideos;
       }
     }
@@ -101,9 +108,7 @@ function readVideos() {
 }
 
 function writeVideos(videos: any[]) {
-  const valid = videos.filter(
-    (v: any) => v && v.id && typeof v.embedUrl === 'string' && v.embedUrl.trim().length > 0
-  );
+  const valid = videos.filter(isValidServerVideo);
   inMemoryServerVideos = valid;
   try {
     fs.writeFileSync(VIDEOS_FILE, JSON.stringify(valid, null, 2), 'utf-8');
@@ -168,7 +173,9 @@ async function syncFromFirebase() {
         for (const [id, val] of Object.entries(data)) {
           if (!val || typeof val !== 'object' || /^\d+$/.test(id)) continue;
           const v = val as any;
-          if (!v.embedUrl || typeof v.embedUrl !== 'string' || !v.embedUrl.trim()) {
+          const hasEmbed = v.embedUrl && typeof v.embedUrl === 'string' && v.embedUrl.trim();
+          const hasWebsite = v.websiteUrl && typeof v.websiteUrl === 'string' && v.websiteUrl.trim();
+          if (!hasEmbed && !hasWebsite) {
             corruptedKeys.push(id);
             continue;
           }
@@ -197,7 +204,7 @@ async function syncFromFirebase() {
 }
 
 async function syncToFirebase(videoId: string, videoObj: any) {
-  if (!videoObj || !videoObj.embedUrl || typeof videoObj.embedUrl !== 'string') return;
+  if (!videoObj || (!videoObj.embedUrl && !videoObj.websiteUrl)) return;
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -314,8 +321,10 @@ async function startServer() {
 
   app.post('/api/videos', (req, res) => {
     const payload = req.body;
-    if (!payload || !payload.embedUrl) {
-      return res.status(400).json({ error: 'embedUrl is required' });
+    const hasEmbed = payload && typeof payload.embedUrl === 'string' && payload.embedUrl.trim().length > 0;
+    const hasWebsite = payload && typeof payload.websiteUrl === 'string' && payload.websiteUrl.trim().length > 0;
+    if (!payload || (!hasEmbed && !hasWebsite)) {
+      return res.status(400).json({ error: 'embedUrl or websiteUrl is required' });
     }
 
     const videos = readVideos();
@@ -326,7 +335,8 @@ async function startServer() {
     const videoObj = {
       id,
       thumbnailUrl: payload.thumbnailUrl || '',
-      embedUrl: payload.embedUrl,
+      embedUrl: payload.embedUrl || '',
+      websiteUrl: payload.websiteUrl || '',
       title: payload.title || 'Untitled video',
       sourceName: payload.sourceName || 'Marketify',
       duration: payload.duration || '',

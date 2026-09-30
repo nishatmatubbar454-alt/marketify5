@@ -10,10 +10,28 @@ export function Home() {
   const { videos, loading, error } = useVideos();
   const [searchParams] = useSearchParams();
   const q = (searchParams.get('q') || '').toLowerCase();
-  const history = getHistory();
+  const [history, setHistory] = useState<string[]>(() => getHistory());
   const historySet = useMemo(() => new Set(history), [history]);
   const [visibleCount, setVisibleCount] = useState(16);
   const observerTargetRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const refreshHistory = () => {
+      setHistory(getHistory());
+    };
+
+    window.addEventListener('mk-history-updated', refreshHistory);
+    window.addEventListener('focus', refreshHistory);
+    document.addEventListener('visibilitychange', refreshHistory);
+    window.addEventListener('storage', refreshHistory);
+
+    return () => {
+      window.removeEventListener('mk-history-updated', refreshHistory);
+      window.removeEventListener('focus', refreshHistory);
+      document.removeEventListener('visibilitychange', refreshHistory);
+      window.removeEventListener('storage', refreshHistory);
+    };
+  }, []);
 
   useEffect(() => {
     setVisibleCount(16);
@@ -27,14 +45,14 @@ export function Home() {
       const seen = active.filter((v) => historySet.has(v.id));
 
       // Sort unseen by newest first
-      const sortedUnseen = unseen.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      // Sort seen by history order or creation time (watched videos sent to the bottom)
-      const sortedSeen = seen.sort((a, b) => {
+      const sortedUnseen = [...unseen].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      // Sort seen so that recently watched videos are sent to the very bottom
+      const sortedSeen = [...seen].sort((a, b) => {
         const aHistoryIdx = history.indexOf(a.id);
         const bHistoryIdx = history.indexOf(b.id);
         if (aHistoryIdx !== -1 && bHistoryIdx !== -1) {
-          // Recently watched ones further down or in sequence
-          return aHistoryIdx - bHistoryIdx;
+          return bHistoryIdx - aHistoryIdx;
         }
         return (b.createdAt || 0) - (a.createdAt || 0);
       });

@@ -4,6 +4,7 @@ export interface Video {
   id: string;
   thumbnailUrl: string;
   embedUrl: string;
+  websiteUrl?: string;
   title: string;
   sourceName: string;
   duration: string;

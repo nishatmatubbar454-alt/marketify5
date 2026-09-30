@@ -172,17 +172,29 @@ export function Dashboard() {
                 {video.title}
               </p>
               <p className="truncate text-[12px] text-[#606060] dark:text-white/50">
-                {timeAgo(video.createdAt)} • {formatCount(video.views)} views • Status: {video.status}
+                {timeAgo(video.createdAt)} • {formatCount(video.views)} views • {video.embedUrl ? 'Video' : 'Website'}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <Link
-                to={`/video/${video.id}`}
-                aria-label="Preview video"
-                className="grid h-9 w-9 place-items-center rounded-md text-[#606060] hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
-              >
-                <ExternalLinkIcon size={16} />
-              </Link>
+              {!video.embedUrl && video.websiteUrl ? (
+                <a
+                  href={video.websiteUrl.startsWith('http') ? video.websiteUrl : `https://${video.websiteUrl}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Visit external link"
+                  className="grid h-9 w-9 place-items-center rounded-md text-[#606060] hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+                >
+                  <ExternalLinkIcon size={16} />
+                </a>
+              ) : (
+                <Link
+                  to={`/video/${video.id}`}
+                  aria-label="Preview video"
+                  className="grid h-9 w-9 place-items-center rounded-md text-[#606060] hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+                >
+                  <ExternalLinkIcon size={16} />
+                </Link>
+              )}
               <Link
                 to={`/erfan/edit/${video.id}`}
                 aria-label="Edit video"
