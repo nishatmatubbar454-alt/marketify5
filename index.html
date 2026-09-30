@@ -16,8 +16,19 @@
     <link rel="preconnect" href="https://himrw-fae65-default-rtdb.firebaseio.com" crossorigin />
     <link rel="dns-prefetch" href="https://www.youtube.com" />
     <link rel="dns-prefetch" href="https://i.ytimg.com" />
-    <link rel="dns-prefetch" href="https://player.vimeo.com" />
-    <link rel="dns-prefetch" href="https://www.dailymotion.com" />
+    <!-- Theme initializer -->
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('mk-theme');
+          if (saved === 'light') {
+            document.documentElement.classList.remove('dark');
+          } else {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

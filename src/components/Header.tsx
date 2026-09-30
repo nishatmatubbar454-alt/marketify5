@@ -83,14 +83,14 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-[#0f0f0f] border-b border-white/10">
+      <header className="sticky top-0 z-40 bg-white dark:bg-[#0f0f0f] border-b border-black/10 dark:border-white/10 transition-colors">
         <div className="mx-auto flex h-14 w-full max-w-[1100px] items-center gap-2 px-3">
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={menuOpen}
-            className="grid h-10 w-10 place-items-center rounded-full text-white transition-all duration-100 ease-out hover:bg-white/10 active:scale-90"
+            className="grid h-10 w-10 place-items-center rounded-full text-[#0f0f0f] dark:text-white transition-all duration-100 ease-out hover:bg-black/5 dark:hover:bg-white/10 active:scale-90"
           >
             {menuOpen ? <XIcon size={24} /> : <MenuIcon size={24} />}
           </button>
@@ -108,11 +108,11 @@ export function Header() {
             type="button"
             onClick={toggleTheme}
             aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            className="flex h-7 w-[54px] items-center rounded-full bg-[#2a2a2a] px-1 active:scale-95 transition-transform"
+            className="flex h-7 w-[54px] items-center rounded-full bg-black/10 dark:bg-[#2a2a2a] px-1 active:scale-95 transition-all"
           >
             <span
-              className={`grid h-5 w-5 place-items-center rounded-full text-[#0f0f0f] transition-transform duration-200 ease-out ${
-                theme === 'dark' ? 'translate-x-[26px] bg-white' : 'translate-x-0 bg-white'
+              className={`grid h-5 w-5 place-items-center rounded-full shadow-sm transition-transform duration-200 ease-out ${
+                theme === 'dark' ? 'translate-x-[26px] bg-white text-[#0f0f0f]' : 'translate-x-0 bg-white text-amber-500'
               }`}
             >
               {theme === 'dark' ? <MoonIcon size={12} /> : <SunIcon size={12} />}
@@ -126,7 +126,7 @@ export function Header() {
               setTerm(searchParams.get('q') || '');
             }}
             aria-label="Search videos"
-            className="grid h-10 w-10 place-items-center rounded-full text-white transition-all duration-100 ease-out hover:bg-white/10 active:scale-90"
+            className="grid h-10 w-10 place-items-center rounded-full text-[#0f0f0f] dark:text-white transition-all duration-100 ease-out hover:bg-black/5 dark:hover:bg-white/10 active:scale-90"
           >
             <SearchIcon size={22} />
           </button>
@@ -135,24 +135,24 @@ export function Header() {
 
       {/* Live Search Modal Overlay */}
       {searchOpen && (
-        <div className="fixed inset-0 z-50 bg-[#0f0f0f] flex flex-col animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 bg-white text-[#0f0f0f] dark:bg-[#0f0f0f] dark:text-white flex flex-col animate-in fade-in duration-150">
           {/* Top Search Input Bar */}
-          <div className="mx-auto flex h-14 w-full max-w-[1100px] items-center gap-2 px-3 border-b border-white/10">
-            <form onSubmit={submitSearch} className="relative flex flex-1 items-center rounded-full bg-[#222] px-3.5 py-1.5 focus-within:ring-2 focus-within:ring-brand">
-              <SearchIcon size={18} className="text-white/60 shrink-0 mr-2" />
+          <div className="mx-auto flex h-14 w-full max-w-[1100px] items-center gap-2 px-3 border-b border-black/10 dark:border-white/10">
+            <form onSubmit={submitSearch} className="relative flex flex-1 items-center rounded-full bg-black/5 dark:bg-[#222] px-3.5 py-1.5 focus-within:ring-2 focus-within:ring-brand">
+              <SearchIcon size={18} className="text-black/50 dark:text-white/60 shrink-0 mr-2" />
               <input
                 autoFocus
                 value={term}
                 onChange={(e) => setTerm(e.target.value)}
                 placeholder="ভিডিওর নাম লিখে সার্চ করুন / Search videos..."
-                className="w-full bg-transparent text-sm text-white placeholder:text-white/40 focus:outline-none"
+                className="w-full bg-transparent text-sm text-[#0f0f0f] dark:text-white placeholder:text-black/40 dark:placeholder:text-white/40 focus:outline-none"
               />
               {term && (
                 <button
                   type="button"
                   onClick={handleClearSearch}
                   aria-label="Clear search"
-                  className="grid h-6 w-6 place-items-center rounded-full text-white/60 hover:text-white hover:bg-white/10"
+                  className="grid h-6 w-6 place-items-center rounded-full text-black/50 hover:text-black dark:text-white/60 dark:hover:text-white hover:bg-black/10 dark:hover:bg-white/10"
                 >
                   <XIcon size={14} />
                 </button>
@@ -161,7 +161,7 @@ export function Header() {
             <button
               type="button"
               onClick={() => setSearchOpen(false)}
-              className="text-sm font-medium text-white/80 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              className="text-sm font-medium text-black/70 hover:text-black dark:text-white/80 dark:hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
             >
               বাতিল
             </button>
@@ -171,7 +171,7 @@ export function Header() {
           <div className="flex-1 overflow-y-auto p-3 max-w-[1100px] mx-auto w-full">
             {term.trim() ? (
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-xs font-medium text-white/70">
+                <span className="text-xs font-medium text-black/70 dark:text-white/70">
                   {liveResults.length > 0
                     ? `"${term}" এর জন্য পাওয়া ফলাফল (${liveResults.length})`
                     : `"${term}" দিয়ে কোনো ভিডিও পাওয়া যায়নি`}
@@ -187,7 +187,7 @@ export function Header() {
                 )}
               </div>
             ) : (
-              <div className="mb-3 flex items-center gap-1.5 text-xs font-medium text-white/50">
+              <div className="mb-3 flex items-center gap-1.5 text-xs font-medium text-black/50 dark:text-white/50">
                 <TrendingUpIcon size={14} className="text-brand" />
                 <span>সাম্প্রতিক ও জনপ্রিয় ভিডিওসমূহ:</span>
               </div>
@@ -200,10 +200,10 @@ export function Header() {
                   <div
                     key={v.id}
                     onClick={() => handleSelectVideo(v.id)}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl bg-[#1a1a1a] p-2 hover:bg-[#252525] transition-colors border border-white/5 group"
+                    className="flex cursor-pointer items-center gap-3 rounded-xl bg-black/5 hover:bg-black/10 border border-black/5 dark:bg-[#1a1a1a] dark:hover:bg-[#252525] dark:border-white/5 group p-2 transition-colors"
                   >
                     {/* Thumbnail */}
-                    <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg bg-neutral-800">
+                    <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg bg-neutral-200 dark:bg-neutral-800">
                       {v.thumbnailUrl ? (
                         <img
                           src={v.thumbnailUrl}
@@ -211,7 +211,7 @@ export function Header() {
                           className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
                         />
                       ) : (
-                        <div className="grid h-full w-full place-items-center bg-neutral-900 text-white/40">
+                        <div className="grid h-full w-full place-items-center bg-neutral-200 dark:bg-neutral-900 text-black/40 dark:text-white/40">
                           <PlayIcon size={18} />
                         </div>
                       )}
@@ -227,10 +227,10 @@ export function Header() {
 
                     {/* Meta */}
                     <div className="min-w-0 flex-1">
-                      <h4 className="line-clamp-2 text-[13px] font-medium text-white group-hover:text-brand leading-snug">
+                      <h4 className="line-clamp-2 text-[13px] font-medium text-[#0f0f0f] dark:text-white group-hover:text-brand leading-snug">
                         {v.title}
                       </h4>
-                      <p className="mt-1 text-[11px] text-white/50 truncate">
+                      <p className="mt-1 text-[11px] text-[#606060] dark:text-white/50 truncate">
                         {v.sourceName ? `${v.sourceName} • ` : ''}
                         {formatViews(v.views)} • {timeAgo(v.createdAt)}
                       </p>
@@ -240,11 +240,11 @@ export function Header() {
               </div>
             ) : (
               <div className="py-12 text-center">
-                <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-white/5 text-white/40 mb-3">
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-black/5 dark:bg-white/5 text-black/40 dark:text-white/40 mb-3">
                   <SearchIcon size={24} />
                 </div>
-                <p className="text-sm font-medium text-white/80">কোনো ফলাফল পাওয়া যায়নি</p>
-                <p className="text-xs text-white/40 mt-1">অন্য কোনো কি-ওয়ার্ড দিয়ে আবার চেষ্টা করুন</p>
+                <p className="text-sm font-medium text-[#0f0f0f] dark:text-white/80">কোনো ফলাফল পাওয়া যায়নি</p>
+                <p className="text-xs text-[#606060] dark:text-white/40 mt-1">অন্য কোনো কি-ওয়ার্ড দিয়ে আবার চেষ্টা করুন</p>
                 <button
                   type="button"
                   onClick={handleClearSearch}
@@ -262,8 +262,8 @@ export function Header() {
       {menuOpen && (
         <div className="fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/60" onClick={() => setMenuOpen(false)} />
-          <aside className="relative flex w-[280px] flex-col bg-[#121212] text-white shadow-2xl">
-            <div className="flex h-14 items-center gap-2 px-4 border-b border-white/10">
+          <aside className="relative flex w-[280px] flex-col bg-white text-[#0f0f0f] dark:bg-[#121212] dark:text-white shadow-2xl">
+            <div className="flex h-14 items-center gap-2 px-4 border-b border-black/10 dark:border-white/10">
               <span className="grid h-7 w-7 place-items-center rounded-full bg-brand text-[#0f0f0f]">
                 <HandshakeIcon size={17} strokeWidth={2.5} />
               </span>
@@ -272,7 +272,7 @@ export function Header() {
                 type="button"
                 onClick={() => setMenuOpen(false)}
                 aria-label="Close menu"
-                className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
+                className="grid h-8 w-8 place-items-center rounded-full text-black/60 hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white"
               >
                 <XIcon size={18} />
               </button>
@@ -282,7 +282,7 @@ export function Header() {
               <Link
                 to="/"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-white hover:bg-white/10"
+                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-[#0f0f0f] hover:bg-black/5 dark:text-white dark:hover:bg-white/10"
               >
                 <HomeIcon size={20} className="text-brand" />
                 Home
@@ -290,7 +290,7 @@ export function Header() {
               <Link
                 to="/trending"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-white/90 hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-[#0f0f0f] hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/10 dark:hover:text-white"
               >
                 <FlameIcon size={20} className="text-orange-500" />
                 Trending
@@ -298,38 +298,38 @@ export function Header() {
               <Link
                 to="/history"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-white/90 hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-[#0f0f0f] hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/10 dark:hover:text-white"
               >
-                <ClockIcon size={20} className="text-blue-400" />
+                <ClockIcon size={20} className="text-blue-500 dark:text-blue-400" />
                 History
               </Link>
               <Link
                 to="/favorites"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-white/90 hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-[#0f0f0f] hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/10 dark:hover:text-white"
               >
-                <BookmarkIcon size={20} className="text-red-400" />
+                <BookmarkIcon size={20} className="text-red-500 dark:text-red-400" />
                 Favorite
               </Link>
               <Link
                 to="/erfan"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-brand hover:bg-white/10"
+                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-brand hover:bg-black/5 dark:hover:bg-white/10"
               >
                 <LockIcon size={20} />
                 c+
               </Link>
 
-              <div className="my-2 border-t border-white/10 pt-2"></div>
+              <div className="my-2 border-t border-black/10 dark:border-white/10 pt-2"></div>
 
               <a
                 href={getTelegramLink()}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-white/90 hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-[#0f0f0f] hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/10 dark:hover:text-white"
               >
-                <SendIcon size={20} className="text-sky-400" />
+                <SendIcon size={20} className="text-sky-500 dark:text-sky-400" />
                 Telegram
               </a>
               <a
@@ -337,14 +337,14 @@ export function Header() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-white/90 hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-[#0f0f0f] hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/10 dark:hover:text-white"
               >
-                <PhoneCallIcon size={20} className="text-green-400" />
+                <PhoneCallIcon size={20} className="text-green-600 dark:text-green-400" />
                 Contact
               </a>
             </div>
 
-            <div className="border-t border-white/15 p-4 text-center text-[11px] text-white/40 flex flex-col gap-0.5">
+            <div className="border-t border-black/10 dark:border-white/15 p-4 text-center text-[11px] text-black/50 dark:text-white/40 flex flex-col gap-0.5">
               <span>Marketify Portal v2.0</span>
               <span className="text-[9px] opacity-40 select-none">Admin Panel Access</span>
             </div>

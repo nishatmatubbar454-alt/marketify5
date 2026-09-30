@@ -12,12 +12,19 @@ const ThemeContext = createContext<ThemeValue>({ theme: 'light', toggleTheme: ()
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem('mk-theme');
-    return stored === 'dark' ? 'dark' : 'light';
+    if (stored === 'light' || stored === 'dark') {
+      return stored;
+    }
+    return 'dark';
   });
 
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.toggle('dark', theme === 'dark');
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
     root.style.colorScheme = theme;
     localStorage.setItem('mk-theme', theme);
   }, [theme]);

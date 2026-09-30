@@ -108,7 +108,7 @@ export function Home() {
         <BannerAd />
 
         <nav aria-label="Breadcrumb" className="py-3 flex items-center justify-between">
-          <Link to="/" className="text-[17px] font-semibold text-[#1a73e8] dark:text-[#8ab4f8]">
+          <Link to="/" className="text-[17px] font-bold text-[#0f0f0f] dark:text-white">
             {q ? `সার্চ ফলাফল: "${searchParams.get('q')}" (${list.length})` : 'Home Feed'}
           </Link>
           {q && (
