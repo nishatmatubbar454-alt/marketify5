@@ -6,7 +6,6 @@ import {
   FlameIcon,
   HandshakeIcon,
   HomeIcon,
-  LockIcon,
   MenuIcon,
   MoonIcon,
   PhoneCallIcon,
@@ -327,14 +326,6 @@ export function Header() {
                 <BookmarkIcon size={20} className="text-red-500 dark:text-red-400" />
                 Favorite
               </Link>
-              <Link
-                to="/erfan"
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-4 rounded-lg px-3 py-3 text-[15px] font-medium text-brand hover:bg-black/5 dark:hover:bg-white/10"
-              >
-                <LockIcon size={20} />
-                c+
-              </Link>
 
               <div className="my-2 border-t border-black/10 dark:border-white/10 pt-2"></div>
 
@@ -385,10 +376,14 @@ export function Header() {
               </div>
             </div>
 
-            <div className="border-t border-black/10 dark:border-white/15 p-4 text-center text-[11px] text-black/50 dark:text-white/40 flex flex-col gap-0.5">
+            <Link
+              to="/erfan"
+              onClick={() => setMenuOpen(false)}
+              className="border-t border-black/10 dark:border-white/15 p-4 text-center text-[11px] text-black/50 dark:text-white/40 flex flex-col gap-0.5 hover:opacity-80 active:opacity-60 transition-opacity cursor-pointer select-none"
+            >
               <span>Marketify Portal v2.0</span>
-              <span className="text-[9px] opacity-40 select-none">Admin Panel Access</span>
-            </div>
+              <span className="text-[9px] opacity-40">Admin Panel Access</span>
+            </Link>
           </aside>
         </div>
       )}

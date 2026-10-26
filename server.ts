@@ -311,7 +311,7 @@ async function startServer() {
   app.use(compression({
     level: 9,
     threshold: 128
-  }));
+  }) as any);
   app.use(express.json({ limit: '10mb' }));
 
   // --- API Routes with ETag and Gzip Level 9 for minimal data usage ---
