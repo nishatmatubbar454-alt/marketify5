@@ -15,10 +15,15 @@ import {
   SendIcon,
   SunIcon,
   TrendingUpIcon,
-  XIcon
+  XIcon,
+  Download,
+  Smartphone,
+  Share,
+  PlusSquare
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useVideos } from '../hooks/useVideos';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 import { formatViews, timeAgo } from '../utils/format';
 import { getContactLink, getOptimizedThumbnail, getTelegramLink } from '../utils/helpers';
 import type { Video } from '../types';
@@ -26,6 +31,7 @@ import type { Video } from '../types';
 export function Header() {
   const { theme, toggleTheme } = useTheme();
   const { videos } = useVideos();
+  const { triggerInstall, showGuideModal, setShowGuideModal, isIOS } = usePWAInstall();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchParams] = useSearchParams();
@@ -352,6 +358,31 @@ export function Header() {
                 <PhoneCallIcon size={20} className="text-green-600 dark:text-green-400" />
                 Contact
               </a>
+
+              {/* In-App Download / Install Button right inside the menu drawer */}
+              <div className="pt-2 pb-1 px-1">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const ok = await triggerInstall();
+                    if (ok) setMenuOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-[#ff7a18] via-[#ea580c] to-[#c2410c] px-3.5 py-3 text-white shadow-md hover:brightness-110 active:scale-[0.98] transition-all"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="grid h-8 w-8 place-items-center rounded-lg bg-white/20">
+                      <Download size={18} className="stroke-[2.5]" />
+                    </div>
+                    <div className="text-left leading-tight">
+                      <div className="text-[13px] font-bold text-white">অ্যাপ ডাউনলোড করুন</div>
+                      <div className="text-[10px] text-white/80">ক্লিক করলেই ফোনে ইন্সটল হবে</div>
+                    </div>
+                  </div>
+                  <span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-white">
+                    INSTALL
+                  </span>
+                </button>
+              </div>
             </div>
 
             <div className="border-t border-black/10 dark:border-white/15 p-4 text-center text-[11px] text-black/50 dark:text-white/40 flex flex-col gap-0.5">
@@ -359,6 +390,74 @@ export function Header() {
               <span className="text-[9px] opacity-40 select-none">Admin Panel Access</span>
             </div>
           </aside>
+        </div>
+      )}
+
+      {/* Install Instructions Guide Modal */}
+      {showGuideModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-sm rounded-2xl bg-[#1c1c1e] text-white p-5 border border-white/10 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <div className="h-9 w-9 rounded-xl overflow-hidden bg-black border border-amber-500/40 p-0.5">
+                  <img src="/app-logo.png" alt="" className="h-full w-full object-contain" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-[15px] leading-tight">Marketify অ্যাপ ডাউনলোড</h4>
+                  <p className="text-[11px] text-white/60">মোবাইল স্ক্রিনে সহজে যোগ করুন</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGuideModal(false)}
+                className="grid h-7 w-7 place-items-center rounded-full text-white/60 hover:text-white"
+              >
+                <XIcon size={18} />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3 text-[13px] text-white/80">
+              {isIOS ? (
+                <>
+                  <div className="flex items-start gap-3 rounded-xl bg-white/5 p-3">
+                    <Share size={20} className="text-sky-400 shrink-0 mt-0.5" />
+                    <p>
+                      ১. Safari ব্রাউজারের নিচে থাকা <strong className="text-white">Share</strong> বাটনে চাপুন।
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3 rounded-xl bg-white/5 p-3">
+                    <PlusSquare size={20} className="text-amber-400 shrink-0 mt-0.5" />
+                    <p>
+                      ২. নিচে স্ক্রোল করে <strong className="text-white">Add to Home Screen</strong> চাপুন।
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start gap-3 rounded-xl bg-white/5 p-3">
+                    <Smartphone size={20} className="text-amber-400 shrink-0 mt-0.5" />
+                    <p>
+                      ১. ব্রাউজারের উপরে ডানদিকের ৩টি ডট (<strong className="text-white">⋮</strong>) মেনুতে চাপুন।
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3 rounded-xl bg-white/5 p-3">
+                    <Download size={20} className="text-green-400 shrink-0 mt-0.5" />
+                    <p>
+                      ২. <strong className="text-white">Install app</strong> অথবা <strong className="text-white">Add to Home screen</strong> চাপলেই ডাউনলোড সম্পন্ন হবে।
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowGuideModal(false)}
+              className="w-full rounded-xl bg-gradient-to-r from-[#ff7a18] to-[#ea580c] py-2.5 text-sm font-bold text-white shadow-md active:scale-95 transition-all"
+            >
+              ঠিক আছে
+            </button>
+          </div>
         </div>
       )}
     </>
