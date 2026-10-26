@@ -22,13 +22,19 @@ import { AdsManagement } from './pages/admin/AdsManagement';
 import { Settings } from './pages/admin/Settings';
 
 function RequireRole({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
+  const { session, loading } = useAuth();
+  if (loading) {
+    return <div className="min-h-screen grid place-items-center bg-[#0f0f0f] text-white/50 text-sm">যাচাই করা হচ্ছে...</div>;
+  }
   if (!session || session.role !== 'admin') return <Navigate to="/erfan" replace />;
   return <>{children}</>;
 }
 
 function AdminEntry() {
-  const { session } = useAuth();
+  const { session, loading } = useAuth();
+  if (loading) {
+    return <div className="min-h-screen grid place-items-center bg-[#0f0f0f] text-white/50 text-sm">যাচাই করা হচ্ছে...</div>;
+  }
   if (session && session.role === 'admin') return <Navigate to="/erfan/dashboard" replace />;
   return <Login />;
 }
