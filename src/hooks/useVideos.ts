@@ -9,6 +9,7 @@ import {
 import { ref as rtdbRef, get as rtdbGet, onValue as rtdbOnValue, set as rtdbSet, remove as rtdbRemove } from 'firebase/database';
 import { db, realtimeDb } from '../lib/firebase';
 import type { Video, VideoStatus } from '../types';
+import { INITIAL_VIDEOS } from '../data/initialVideos';
 
 const LOCAL_VIDEOS_KEY = 'mk-local-videos';
 const VIDEOS_EVENT = 'marketify-videos-updated';
@@ -42,7 +43,7 @@ function getLocalVideos(): Video[] {
   if (inMemoryVideosCache && inMemoryVideosCache.length > 0) {
     return inMemoryVideosCache.filter(isValidVideo);
   }
-  return [];
+  return INITIAL_VIDEOS;
 }
 
 function saveLocalVideos(list: Video[]) {
