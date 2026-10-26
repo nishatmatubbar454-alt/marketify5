@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "Marketify Video Platform",
+  "short_name": "Marketify",
+  "description": "Watch trending viral videos, save internet data, and stream ultra-fast on Marketify.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#ff7a18",
+  "background_color": "#0f0f0f",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-logo.png",
+      "sizes": "1920x1916",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

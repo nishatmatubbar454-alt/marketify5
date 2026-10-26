@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Videos Collection
+    match /videos/{videoId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+
+      // Subcollection for Video Comments
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create, update, delete: if true;
+      }
+    }
+
+    // Ads Management Collection
+    match /ads/{adId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Default fallback
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

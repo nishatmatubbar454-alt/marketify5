@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Marketify Video Platform & Ad Manager</title>
+    <meta name="description" content="Video streaming platform with admin panel and toggleable ad management ensuring zero ads in the admin panel." />
+    <meta property="og:title" content="Marketify Video Platform & Ad Manager" />
+    <meta property="og:description" content="Video streaming platform with admin panel and toggleable ad management ensuring zero ads in the admin panel." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#ff7a18" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Marketify" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="/pwa-192x192.png" />
+
+    <!-- Performance & Preconnect resource hints for instant page transitions -->
+    <link rel="preconnect" href="https://www.youtube.com" crossorigin />
+    <link rel="preconnect" href="https://i.ytimg.com" crossorigin />
+    <link rel="preconnect" href="https://himrw-fae65-default-rtdb.firebaseio.com" crossorigin />
+    <link rel="dns-prefetch" href="https://www.youtube.com" />
+    <link rel="dns-prefetch" href="https://i.ytimg.com" />
+    <!-- Theme initializer & Global Error Guard -->
+    <script>
+      (function() {
+        // Suppress external cross-origin ad network "Script error."
+        window.addEventListener('error', function(event) {
+          if (!event) return;
+          var msg = event.message || '';
+          if (msg === 'Script error.' || (event.filename && event.filename.indexOf(window.location.hostname) === -1)) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }, true);
+
+        window.onerror = function(msg, url) {
+          if (!msg || msg === 'Script error.' || (url && url.indexOf(window.location.hostname) === -1)) {
+            return true;
+          }
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (!event || !event.reason) return;
+          var str = String(event.reason.message || event.reason);
+          if (str.indexOf('Script error') !== -1) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        });
+
+        try {
+          var saved = localStorage.getItem('mk-theme');
+          if (saved === 'light') {
+            document.documentElement.classList.remove('dark');
+          } else {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

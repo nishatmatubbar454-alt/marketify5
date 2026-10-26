@@ -1,0 +1,32 @@
+[
+  {
+    "id": "banner_468x60",
+    "createdAt": 1788795470287,
+    "name": "468x60 Banner Ad",
+    "placement": "Public Feed & Video Page",
+    "script": "<script>\n  atOptions = {\n    'key' : '280410b8223e51dae425f09c7a2f0eb1',\n    'format' : 'iframe',\n    'height' : 60,\n    'width' : 468,\n    'params' : {}\n  };\n</script>\n<script src=\"https://brijmohan.org/22/280410b8223e51dae425f09c7a2f0eb1\"></script>",
+    "status": "on",
+    "type": "banner_468x60",
+    "updatedAt": 1792207100957
+  },
+  {
+    "id": "social_bar_1",
+    "createdAt": 1788795470287,
+    "name": "Social Bar Ad #1",
+    "placement": "Public Frontend",
+    "script": "<script data-cfasync=\"false\" src=\"https://brijmohan.org/14/a412679a12b000c8cd0a802095a46290\"></script>",
+    "status": "on",
+    "type": "social_bar",
+    "updatedAt": 1792207169231
+  },
+  {
+    "id": "social_bar_2",
+    "createdAt": 1788795470287,
+    "name": "Social Bar Ad #2",
+    "placement": "Public Frontend",
+    "script": "<script data-cfasync=\"false\" src=\"https://brijmohan.org/14/a412679a12b000c8cd0a802095a46290\"></script>",
+    "status": "on",
+    "type": "social_bar",
+    "updatedAt": 1792207186974
+  }
+]
