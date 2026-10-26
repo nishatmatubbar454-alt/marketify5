@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
-import { ref as rtdbRef, onValue as rtdbOnValue, set as rtdbSet, remove as rtdbRemove } from 'firebase/database';
+import { ref as rtdbRef, get as rtdbGet, set as rtdbSet, remove as rtdbRemove } from 'firebase/database';
 import { db, realtimeDb } from '../lib/firebase';
 import { DEFAULT_ADS } from '../data/defaultAds';
 import type { Ad } from '../types';
@@ -62,18 +62,64 @@ function initSharedAdsListener() {
   window.addEventListener(ADS_EVENT, handleLocalSync);
   window.addEventListener('storage', handleLocalSync);
 
+  const loadAdsFromFirebase = async () => {
+    try {
+      const res = await fetch('https://himrw-fae65-default-rtdb.firebaseio.com/ads.json');
+      if (res.ok) {
+        const val = await res.json();
+        if (val && typeof val === 'object') {
+          let remote: Ad[] = [];
+          if (Array.isArray(val)) {
+            remote = val.filter(Boolean);
+          } else if (typeof val === 'object') {
+            remote = Object.entries(val).map(([id, item]) => ({ id, ...(item as Omit<Ad, 'id'>) }));
+          }
+          if (remote.length > 0) {
+            sharedAds = mergeWithDefaults(remote);
+            saveLocalAds(sharedAds);
+            notifySubscribers();
+            return;
+          }
+        }
+      }
+    } catch {}
+
+    try {
+      const snap = await rtdbGet(rtdbRef(realtimeDb, 'ads'));
+      const val = snap.val();
+      if (val) {
+        let remote: Ad[] = [];
+        if (Array.isArray(val)) {
+          remote = val.filter(Boolean);
+        } else if (typeof val === 'object') {
+          remote = Object.entries(val).map(([id, item]) => ({ id, ...(item as Omit<Ad, 'id'>) }));
+        }
+        if (remote.length > 0) {
+          sharedAds = mergeWithDefaults(remote);
+          saveLocalAds(sharedAds);
+          notifySubscribers();
+        }
+      }
+    } catch {}
+  };
+
   // 1. Instant server fetch
   fetch('/api/ads')
     .then((res) => (res.ok ? res.json() : null))
     .then((data) => {
-      if (data && data.success && Array.isArray(data.ads)) {
+      if (data && data.success && Array.isArray(data.ads) && data.ads.length > 0) {
         sharedAds = mergeWithDefaults(data.ads);
         saveLocalAds(sharedAds);
         notifySubscribers();
+      } else {
+        loadAdsFromFirebase();
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      loadAdsFromFirebase();
+    });
 
+  loadAdsFromFirebase();
 }
 
 export function useAds() {

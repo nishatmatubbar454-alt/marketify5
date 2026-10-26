@@ -6,7 +6,7 @@ import {
   increment,
   setDoc
 } from 'firebase/firestore';
-import { ref as rtdbRef, onValue as rtdbOnValue, set as rtdbSet, remove as rtdbRemove } from 'firebase/database';
+import { ref as rtdbRef, get as rtdbGet, onValue as rtdbOnValue, set as rtdbSet, remove as rtdbRemove } from 'firebase/database';
 import { db, realtimeDb } from '../lib/firebase';
 import type { Video, VideoStatus } from '../types';
 
@@ -105,11 +105,58 @@ function initSharedVideosListener() {
   window.addEventListener(VIDEOS_EVENT, handleLocalSync);
   window.addEventListener('storage', handleLocalSync);
 
-  // 1. Fast server API fetch (sub-millisecond in-memory cache)
+  // Directly load from Firebase Realtime Database (works on Cloudflare Workers, static CDN, or Node)
+  const loadVideosFromFirebase = async (): Promise<boolean> => {
+    // 1. Direct REST fetch (fastest, universally accessible without SDK overhead)
+    try {
+      const res = await fetch('https://himrw-fae65-default-rtdb.firebaseio.com/videos.json');
+      if (res.ok) {
+        const val = await res.json();
+        if (val && typeof val === 'object') {
+          const remoteList: Video[] = Object.entries(val)
+            .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
+            .map(([k, v]) => mapVideo(k, v as Record<string, unknown>))
+            .filter((v: Video | null): v is Video => v !== null && isValidVideo(v))
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+          if (remoteList.length > 0 && !areVideosEqual(sharedVideos, remoteList)) {
+            sharedVideos = remoteList;
+            saveLocalVideos(remoteList);
+            notifyVideoSubscribers();
+            return true;
+          }
+        }
+      }
+    } catch {}
+
+    // 2. Fallback to Firebase SDK rtdbGet
+    try {
+      const snap = await rtdbGet(rtdbRef(realtimeDb, 'videos'));
+      const val = snap.val();
+      if (val && typeof val === 'object') {
+        const remoteList: Video[] = Object.entries(val)
+          .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
+          .map(([k, v]) => mapVideo(k, v as Record<string, unknown>))
+          .filter((v: Video | null): v is Video => v !== null && isValidVideo(v))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        if (remoteList.length > 0 && !areVideosEqual(sharedVideos, remoteList)) {
+          sharedVideos = remoteList;
+          saveLocalVideos(remoteList);
+          notifyVideoSubscribers();
+          return true;
+        }
+      }
+    } catch {}
+
+    return false;
+  };
+
+  // 1. First try fast local Express server API fetch
   fetch('/api/videos')
     .then((res) => (res.ok ? res.json() : null))
     .then((data) => {
-      if (data && data.success && Array.isArray(data.videos)) {
+      if (data && data.success && Array.isArray(data.videos) && data.videos.length > 0) {
         const serverVideos: Video[] = data.videos
           .map((v: any) => mapVideo(v.id, v))
           .filter((v: Video | null): v is Video => v !== null && isValidVideo(v));
@@ -118,9 +165,19 @@ function initSharedVideosListener() {
           saveLocalVideos(serverVideos);
           notifyVideoSubscribers();
         }
+      } else {
+        // Express not present or returned 404 (e.g. on Cloudflare Workers / Static hosting)
+        loadVideosFromFirebase();
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      loadVideosFromFirebase();
+    });
+
+  // Always trigger direct Firebase load if in-memory list is empty
+  if (sharedVideos.length === 0) {
+    loadVideosFromFirebase();
+  }
 
   // 2. Gentle background conditional refresh (uses HTTP 304, zero data if unchanged)
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -129,7 +186,7 @@ function initSharedVideosListener() {
       fetch('/api/videos', { cache: 'default' })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
-          if (data && data.success && Array.isArray(data.videos)) {
+          if (data && data.success && Array.isArray(data.videos) && data.videos.length > 0) {
             const serverVideos: Video[] = data.videos
               .map((v: any) => mapVideo(v.id, v))
               .filter((v: Video | null): v is Video => v !== null && isValidVideo(v));
@@ -138,9 +195,13 @@ function initSharedVideosListener() {
               saveLocalVideos(serverVideos);
               notifyVideoSubscribers();
             }
+          } else {
+            loadVideosFromFirebase();
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          loadVideosFromFirebase();
+        });
     }
   };
 
