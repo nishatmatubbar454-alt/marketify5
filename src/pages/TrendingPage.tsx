@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BannerAd } from '../components/BannerAd';
 import { VideoCard } from '../components/VideoCard';
 import { Pagination } from '../components/Pagination';
 import { useVideos } from '../hooks/useVideos';
+import { getHistory } from '../utils/helpers';
 import { FlameIcon } from 'lucide-react';
 
 const PAGE_SIZE = 16;
@@ -16,29 +17,64 @@ export function TrendingPage() {
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const currentPage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
 
-  // 7-day trending calculation: highest views in last 7 days is placed at the very top
+  // Track watched videos history so watched videos move away automatically
+  const [history, setHistory] = useState<string[]>(() => getHistory());
+  const historySet = useMemo(() => new Set(history), [history]);
+
+  useEffect(() => {
+    const refreshHistory = () => {
+      setHistory(getHistory());
+    };
+
+    window.addEventListener('mk-history-updated', refreshHistory);
+    window.addEventListener('focus', refreshHistory);
+    document.addEventListener('visibilitychange', refreshHistory);
+    window.addEventListener('storage', refreshHistory);
+
+    return () => {
+      window.removeEventListener('mk-history-updated', refreshHistory);
+      window.removeEventListener('focus', refreshHistory);
+      document.removeEventListener('visibilitychange', refreshHistory);
+      window.removeEventListener('storage', refreshHistory);
+    };
+  }, []);
+
+  // 7-day trending calculation: highest views in last 7 days; watched videos move away to bottom
   const trendingList = useMemo(() => {
     const now = Date.now();
     const active = videos.filter((v) => v.status === 'active');
 
-    const last7Days = active.filter((v) => {
+    // Separate unseen videos from already watched (seen) videos
+    const unseen = active.filter((v) => !historySet.has(v.id));
+    const seen = active.filter((v) => historySet.has(v.id));
+
+    // 1. Unseen videos created within last 7 days
+    const unseenLast7Days = unseen.filter((v) => {
       const time = v.createdAt || v.updatedAt || 0;
       return (now - time) <= SEVEN_DAYS_MS;
     });
 
-    const older = active.filter((v) => {
+    // 2. Unseen older videos
+    const unseenOlder = unseen.filter((v) => {
       const time = v.createdAt || v.updatedAt || 0;
       return (now - time) > SEVEN_DAYS_MS;
     });
 
-    // Sort last 7-day videos strictly by views descending
-    last7Days.sort((a, b) => (b.views || 0) - (a.views || 0));
-    // Sort older videos by views descending
-    older.sort((a, b) => (b.views || 0) - (a.views || 0));
+    // Sort unseen last 7-day videos strictly by views descending
+    unseenLast7Days.sort((a, b) => (b.views || 0) - (a.views || 0));
+    // Sort unseen older videos by views descending
+    unseenOlder.sort((a, b) => (b.views || 0) - (a.views || 0));
 
-    // Combine: 7-day top videos strictly first
-    return [...last7Days, ...older];
-  }, [videos]);
+    // 3. Seen videos: watched videos moved away to the very bottom
+    const sortedSeen = [...seen].sort((a, b) => {
+      const aHistoryIdx = history.indexOf(a.id);
+      const bHistoryIdx = history.indexOf(b.id);
+      return aHistoryIdx - bHistoryIdx;
+    });
+
+    // Combine: 7-day unseen top viewed videos first, older unseen next, and seen videos at bottom
+    return [...unseenLast7Days, ...unseenOlder, ...sortedSeen];
+  }, [videos, historySet, history]);
 
   const totalPages = Math.ceil(trendingList.length / PAGE_SIZE);
 
