@@ -6,10 +6,14 @@ export const BannerAd = React.memo(function BannerAd() {
   const { banner } = useAds();
   const { pathname } = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
-  const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/erfan');
 
-  // CRITICAL: Never render banner ads if user is in the Admin Panel
-  const isEnabled = !isAdminRoute && banner?.status === 'on' && Boolean(banner?.script?.trim());
+  // CRITICAL: Block ads on Home Page ('/') and Admin Panel ('/erfan', '/admin')
+  const isBlockedRoute =
+    pathname === '/' ||
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/erfan');
+
+  const isEnabled = !isBlockedRoute && banner?.status === 'on' && Boolean(banner?.script?.trim());
 
   useEffect(() => {
     if (!isEnabled || !banner?.script) return;

@@ -3,6 +3,8 @@ import { signInAnonymously } from 'firebase/auth';
 import { userRealtimeDb, userAuth } from '../lib/firebase';
 
 const SESSION_COOKIE_NAME = 'mk_usr_sid';
+const LOCAL_HISTORY_KEY = 'mk-user-history';
+const LOCAL_FAVORITES_KEY = 'mk-user-favorites';
 
 function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
@@ -16,34 +18,51 @@ function setCookie(name: string, value: string, days = 365) {
   document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
 }
 
+// Persistent session ID linked with browser cookie & local identifier
 export function getUserSessionId(): string {
   let sid = getCookie(SESSION_COOKIE_NAME);
+  if (!sid && typeof localStorage !== 'undefined') {
+    try {
+      sid = localStorage.getItem(SESSION_COOKIE_NAME);
+    } catch {}
+  }
+
   if (!sid) {
     sid = 'usr_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
-    setCookie(SESSION_COOKIE_NAME, sid);
   }
+
+  setCookie(SESSION_COOKIE_NAME, sid);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(SESSION_COOKIE_NAME, sid);
+    } catch {}
+  }
+
   return sid;
 }
 
-// In-memory collections purely synced with the second Firebase (zero localStorage disk bloat)
-let inMemoryFavorites: string[] = [];
-let inMemoryHistory: string[] = [];
-let isUserSyncInitialized = false;
-
-// Remove any old local storage bloat so no MB is stored locally
-if (typeof window !== 'undefined') {
+// Initialize in-memory cache from persistent storage so history NEVER disappears or becomes 0
+function getStoredLocalArray(key: string): string[] {
+  if (typeof localStorage === 'undefined') return [];
   try {
-    localStorage.removeItem('mk-favorites');
-    localStorage.removeItem('mk-history');
-    localStorage.removeItem('mk-local-videos');
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter((id) => typeof id === 'string' && id.trim());
+    }
   } catch {}
+  return [];
 }
+
+let inMemoryFavorites: string[] = getStoredLocalArray(LOCAL_FAVORITES_KEY);
+let inMemoryHistory: string[] = getStoredLocalArray(LOCAL_HISTORY_KEY);
+let isUserSyncInitialized = false;
 
 export function initUserOnlineSync() {
   if (isUserSyncInitialized || typeof window === 'undefined') return;
   isUserSyncInitialized = true;
 
-  // Background anonymous auth sign-in on the second Firebase
+  // Background anonymous auth sign-in on user Firebase
   try {
     signInAnonymously(userAuth).catch(() => {});
   } catch {}
@@ -55,20 +74,38 @@ export function initUserOnlineSync() {
     rtdbOnValue(userNodeRef, (snapshot) => {
       const data = snapshot.val();
       if (data && typeof data === 'object') {
+        let remoteFavs: string[] = [];
         if (Array.isArray(data.favorites)) {
-          inMemoryFavorites = data.favorites.filter(Boolean);
+          remoteFavs = data.favorites.filter(Boolean);
         } else if (data.favorites && typeof data.favorites === 'object') {
-          inMemoryFavorites = Object.keys(data.favorites);
+          remoteFavs = Object.keys(data.favorites);
         }
 
+        let remoteHist: string[] = [];
         if (Array.isArray(data.history)) {
-          inMemoryHistory = data.history.filter(Boolean);
+          remoteHist = data.history.filter(Boolean);
         } else if (data.history && typeof data.history === 'object') {
-          inMemoryHistory = Object.keys(data.history);
+          remoteHist = Object.keys(data.history);
         }
 
-        window.dispatchEvent(new CustomEvent('mk-favorites-updated'));
-        window.dispatchEvent(new CustomEvent('mk-history-updated'));
+        // Merge with local state so newly watched videos are never lost
+        if (remoteFavs.length > 0) {
+          const mergedFavs = Array.from(new Set([...inMemoryFavorites, ...remoteFavs]));
+          inMemoryFavorites = mergedFavs;
+          try {
+            localStorage.setItem(LOCAL_FAVORITES_KEY, JSON.stringify(mergedFavs));
+          } catch {}
+          window.dispatchEvent(new CustomEvent('mk-favorites-updated'));
+        }
+
+        if (remoteHist.length > 0) {
+          const mergedHist = Array.from(new Set([...inMemoryHistory, ...remoteHist])).slice(0, 100);
+          inMemoryHistory = mergedHist;
+          try {
+            localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(mergedHist));
+          } catch {}
+          window.dispatchEvent(new CustomEvent('mk-history-updated'));
+        }
       }
     });
   } catch {}
@@ -77,6 +114,9 @@ export function initUserOnlineSync() {
 export function getFavorites(): string[] {
   if (typeof window !== 'undefined' && !isUserSyncInitialized) {
     initUserOnlineSync();
+  }
+  if (inMemoryFavorites.length === 0) {
+    inMemoryFavorites = getStoredLocalArray(LOCAL_FAVORITES_KEY);
   }
   return inMemoryFavorites;
 }
@@ -92,6 +132,11 @@ export function toggleFavorite(id: string): boolean {
   } else {
     inMemoryFavorites = inMemoryFavorites.filter((item) => item !== id);
   }
+
+  // Save to persistent backup immediately
+  try {
+    localStorage.setItem(LOCAL_FAVORITES_KEY, JSON.stringify(inMemoryFavorites));
+  } catch {}
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('mk-favorites-updated'));
@@ -111,6 +156,9 @@ export function getHistory(): string[] {
   if (typeof window !== 'undefined' && !isUserSyncInitialized) {
     initUserOnlineSync();
   }
+  if (inMemoryHistory.length === 0) {
+    inMemoryHistory = getStoredLocalArray(LOCAL_HISTORY_KEY);
+  }
   return inMemoryHistory;
 }
 
@@ -118,13 +166,19 @@ export function addHistory(id: string) {
   if (!id) return;
   if (!isUserSyncInitialized) initUserOnlineSync();
 
+  // Prepend current watched video and keep up to 100 entries
   inMemoryHistory = [id, ...inMemoryHistory.filter((item) => item !== id)].slice(0, 100);
+
+  // Save immediately to persistent backup so history never resets to 0
+  try {
+    localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(inMemoryHistory));
+  } catch {}
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('mk-history-updated', { detail: { id } }));
   }
 
-  // Purely online sync to second Firebase database
+  // Sync to online Firebase database
   try {
     const sid = getUserSessionId();
     const histRef = rtdbRef(userRealtimeDb, `users/${sid}/history`);
