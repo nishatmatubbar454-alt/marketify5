@@ -41,8 +41,9 @@ function parseScriptString(raw: string): ParsedScript[] {
 export function SocialBarAds() {
   const { socialBars } = useAds();
   const { pathname } = useLocation();
-  const isVideoRoute = pathname.startsWith('/video');
+  const isHomeRoute = pathname === '/';
   const isAdminRoute = pathname.startsWith('/erfan') || pathname.startsWith('/admin');
+  const isBlockedRoute = isHomeRoute || isAdminRoute;
 
   // Filter active social bars
   const activeSocialBars = useMemo(() => {
@@ -51,14 +52,14 @@ export function SocialBarAds() {
 
   // Create a serialized string signature so effect only triggers when actual ads change or route changes
   const signature = useMemo(() => {
-    return `${isVideoRoute ? 'video' : 'other'}:${activeSocialBars.map((a) => `${a.id}:${a.script}`).join('||')}`;
-  }, [isVideoRoute, activeSocialBars]);
+    return `${isBlockedRoute ? 'blocked' : 'allowed'}:${activeSocialBars.map((a) => `${a.id}:${a.script}`).join('||')}`;
+  }, [isBlockedRoute, activeSocialBars]);
 
   const injectedElementsRef = useRef<HTMLElement[]>([]);
 
   useEffect(() => {
-    // CRITICAL: Strict ad-free guarantee for admin routes
-    if (isAdminRoute || !isVideoRoute || activeSocialBars.length === 0) {
+    // CRITICAL: Block popup ads on Home Feed ('/') and Admin Panel
+    if (isBlockedRoute || activeSocialBars.length === 0) {
       // Clean up any previously injected social bar scripts
       injectedElementsRef.current.forEach((el) => el.remove());
       injectedElementsRef.current = [];
@@ -111,7 +112,7 @@ export function SocialBarAds() {
     });
 
     injectedElementsRef.current = currentInjected;
-  }, [signature, isVideoRoute, isAdminRoute, activeSocialBars]);
+  }, [signature, isBlockedRoute, activeSocialBars]);
 
   return null;
 }

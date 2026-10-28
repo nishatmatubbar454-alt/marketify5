@@ -23,6 +23,7 @@ import {
 import { useTheme } from '../contexts/ThemeContext';
 import { useVideos } from '../hooks/useVideos';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { LockHeaderButton } from './lock/LockHeaderButton';
 import { formatViews, timeAgo } from '../utils/format';
 import { getContactLink, getOptimizedThumbnail, getTelegramLink } from '../utils/helpers';
 import type { Video } from '../types';
@@ -111,6 +112,8 @@ export function Header() {
               className="h-13 sm:h-16 w-auto max-w-[240px] sm:max-w-[320px] object-contain drop-shadow-md"
             />
           </Link>
+
+          <LockHeaderButton />
 
           <button
             type="button"
