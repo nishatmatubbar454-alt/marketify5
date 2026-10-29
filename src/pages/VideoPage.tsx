@@ -196,6 +196,10 @@ export function VideoPage() {
 
   const handleRelatedPageChange = (newPage: number) => {
     setRelatedPage(newPage);
+    const el = document.getElementById('related-grid');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   const isResolving = !video && (fetchingDirect || (loading && !notFound));
@@ -327,8 +331,8 @@ export function VideoPage() {
         )}
 
         {/* Related videos header */}
-        <div className="mt-6 mb-3 px-1 flex items-center justify-between">
-          <h2 className="text-[17px] font-bold text-[#0f0f0f] dark:text-white">
+        <div className="mt-5 mb-2.5 px-1 flex items-center justify-between">
+          <h2 className="text-[16px] sm:text-[17px] font-bold text-[#0f0f0f] dark:text-white">
             Related Videos
           </h2>
           {related.length > 0 && (
@@ -338,13 +342,17 @@ export function VideoPage() {
           )}
         </div>
 
-        {/* Related Videos List */}
-        <div className="space-y-3">
-          {visibleRelated.map((rel) => (
-            <div key={rel.id} className="space-y-1.5">
-              <RelatedVideoCard video={rel} />
-              <BannerAd />
-            </div>
+        {/* 2-column Side-by-Side Related Videos Grid */}
+        <div id="related-grid" className="grid grid-cols-2 gap-2 sm:gap-3">
+          {visibleRelated.map((v, index) => (
+            <React.Fragment key={v.id}>
+              <RelatedVideoCard video={v} />
+              {(index + 1) % 2 === 0 && (
+                <div className="col-span-2 my-1">
+                  <BannerAd />
+                </div>
+              )}
+            </React.Fragment>
           ))}
         </div>
 
