@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Download, Star, X, Smartphone, Share, PlusSquare } from 'lucide-react';
+import { recordAppInstall } from '../utils/analytics';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -41,8 +42,8 @@ export function AppInstallBanner() {
     const handleInstalled = () => {
       setIsInstalled(true);
       setDeferredPrompt(null);
-      // Track install in backend
-      fetch('/api/analytics/app-install', { method: 'POST' }).catch(() => {});
+      // Track install in Firebase RTDB & backend
+      recordAppInstall(isIOSDevice ? 'iOS' : 'Android');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -57,8 +58,8 @@ export function AppInstallBanner() {
   const [showGuideModal, setShowGuideModal] = useState(false);
 
   const handleInstallClick = async () => {
-    // Record download intent
-    fetch('/api/analytics/app-install', { method: 'POST' }).catch(() => {});
+    // Record download intent in Firebase RTDB
+    recordAppInstall(isIOS ? 'iOS' : 'Android');
 
     if (deferredPrompt) {
       try {

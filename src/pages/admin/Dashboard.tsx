@@ -1,31 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { AlertTriangleIcon, CheckCircle2Icon, ExternalLinkIcon, PencilIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { AlertTriangleIcon, CheckCircle2Icon, ExternalLinkIcon, PencilIcon, Trash2Icon, XIcon, SmartphoneIcon } from 'lucide-react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { deleteVideo, saveVideo, useVideos } from '../../hooks/useVideos';
 import { formatCount, timeAgo } from '../../utils/format';
+import { useAppAnalytics } from '../../utils/analytics';
 import type { Video } from '../../types';
 
 export function Dashboard() {
   const { videos, loading, error } = useVideos();
+  const analyticsStats = useAppAnalytics();
   const location = useLocation();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deletingVideo, setDeletingVideo] = useState<Video | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [appInstalls, setAppInstalls] = useState<number>(0);
 
   const totalViews = videos.reduce((sum, v) => sum + (v.views || 0), 0);
-
-  useEffect(() => {
-    fetch('/api/analytics/stats')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && data.stats && typeof data.stats.appInstalls === 'number') {
-          setAppInstalls(data.stats.appInstalls);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -145,11 +135,73 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
         <Stat label="Total Videos" value={String(videos.length)} />
         <Stat label="Active Videos" value={String(videos.filter((v) => v.status === 'active').length)} />
         <Stat label="Total Views" value={formatCount(totalViews)} />
-        <Stat label="App Installs / ডাউনলোড" value={formatCount(appInstalls)} highlight />
+        <Stat
+          label="মোট ডাউনলোড (Installs)"
+          value={formatCount(analyticsStats.totalInstalls)}
+          highlight
+        />
+        <Stat
+          label="ফোনে ইনস্টল আছে (Devices)"
+          value={formatCount(analyticsStats.installedPhonesCount)}
+          highlight
+        />
+      </div>
+
+      {/* Installed Devices & App Download Breakdown */}
+      <div className="mb-4 rounded-xl border border-black/10 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-panel">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/5 pb-2.5 dark:border-white/5">
+          <div className="flex items-center gap-2">
+            <SmartphoneIcon size={18} className="text-brand" />
+            <span className="text-[13px] sm:text-[14px] font-bold text-[#0f0f0f] dark:text-white">
+              অ্যাপ ডাউনলোড ও ইনস্টল ডিভাইস পরিসংখ্যান (Device Analytics)
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px] font-medium">
+            <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-emerald-600 dark:text-emerald-400 font-bold">
+              Android Phone: {analyticsStats.androidCount}
+            </span>
+            <span className="rounded-md bg-sky-500/10 px-2 py-0.5 text-sky-600 dark:text-sky-400 font-bold">
+              iPhone (iOS): {analyticsStats.iosCount}
+            </span>
+            <span className="rounded-md bg-purple-500/10 px-2 py-0.5 text-purple-600 dark:text-purple-400 font-bold">
+              অন্যান্য: {analyticsStats.desktopCount}
+            </span>
+          </div>
+        </div>
+
+        {analyticsStats.devices.length === 0 ? (
+          <p className="pt-2.5 text-[12px] text-[#606060] dark:text-white/50 text-center">
+            এখনো কোনো ডিভাইস রেকর্ড হয়নি। ব্যবহারকারীরা অ্যাপ ইনস্টল বা চালু করলেই এখানে তাদের ডিভাইসের তালিকা স্বয়ংক্রিয়ভাবে চলে আসবে।
+          </p>
+        ) : (
+          <div className="mt-2.5 max-h-48 overflow-y-auto space-y-1.5 divide-y divide-black/5 dark:divide-white/5 text-[12px]">
+            {analyticsStats.devices.map((device, idx) => (
+              <div key={device.deviceId || idx} className="pt-1.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] text-[#808080]">#{idx + 1}</span>
+                  <span className="font-semibold text-[#0f0f0f] dark:text-white">
+                    {device.platform === 'iOS'
+                      ? '🍏 iPhone / iPad'
+                      : device.platform === 'Android'
+                      ? '📱 Android Phone'
+                      : '💻 Desktop / Other'}
+                  </span>
+                  <span className="font-mono text-[10px] text-[#808080] bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded">
+                    {device.deviceId?.substring(0, 10)}...
+                  </span>
+                </div>
+                <div className="text-[11px] text-[#808080] flex items-center gap-2">
+                  <span>সর্বশেষ সক্রিয়: {timeAgo(device.lastActiveAt)}</span>
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" title="Active Device" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && (

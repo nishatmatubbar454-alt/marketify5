@@ -47,7 +47,20 @@ function PublicHeaderBanner() {
   return <AppInstallBanner />;
 }
 
+import { trackDevicePresence, recordAppInstall } from './utils/analytics';
+
 export function App() {
+  React.useEffect(() => {
+    trackDevicePresence();
+    const handleInstalled = () => {
+      recordAppInstall();
+    };
+    window.addEventListener('appinstalled', handleInstalled);
+    return () => {
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
+  }, []);
+
   return (
     <ThemeProvider>
       <AuthProvider>

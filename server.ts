@@ -383,6 +383,16 @@ async function startServer() {
     res.json({ success: true, video: videoObj, id });
   });
 
+  app.get('/api/videos/:id', (req, res) => {
+    const { id } = req.params;
+    const videos = readVideos();
+    const found = videos.find((v: any) => v.id === id);
+    if (found) {
+      return res.json({ success: true, video: found });
+    }
+    res.status(404).json({ success: false, error: 'Video not found' });
+  });
+
   app.delete('/api/videos/:id', (req, res) => {
     const { id } = req.params;
     const videos = readVideos().filter((v: any) => v.id !== id);

@@ -16,7 +16,11 @@ export function VideoPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const stateVideo = (location.state as { video?: Video } | null)?.video;
-  const { videos, loading, error } = useVideos();
+  const { videos, loading } = useVideos();
+
+  const [directVideo, setDirectVideo] = useState<Video | null>(null);
+  const [fetchingDirect, setFetchingDirect] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
   const [liked, setLiked] = useState(false);
   const [favorite, setFavorite] = useState(false);
@@ -26,13 +30,99 @@ export function VideoPage() {
   const [relatedPage, setRelatedPage] = useState(1);
   const RELATED_PAGE_SIZE = 12;
 
-  // Immediate video resolution: If passed via state or localStorage, available in 0ms!
+  // Immediate video resolution: checks stateVideo -> videos -> directVideo
   const video = useMemo(() => {
     if (stateVideo && stateVideo.id === id) return stateVideo;
     const found = videos.find((v) => v.id === id);
     if (found) return found;
+    if (directVideo && directVideo.id === id) return directVideo;
     return null;
-  }, [stateVideo, videos, id]);
+  }, [stateVideo, videos, id, directVideo]);
+
+  // Fast single-video direct fetch (loads in ~100ms instead of waiting 5-10s for the whole database!)
+  useEffect(() => {
+    if (!id) return;
+
+    // If already resolved via stateVideo or videos cache
+    if (stateVideo && stateVideo.id === id) {
+      setFetchingDirect(false);
+      setNotFound(false);
+      return;
+    }
+    const foundInList = videos.find((v) => v.id === id);
+    if (foundInList) {
+      setFetchingDirect(false);
+      setNotFound(false);
+      return;
+    }
+
+    let isMounted = true;
+    setFetchingDirect(true);
+    setNotFound(false);
+
+    // 1. Fetch exact single video directly from Firebase RTDB (returns in ~100ms, only ~1KB)
+    fetch(`https://himrw-fae65-default-rtdb.firebaseio.com/videos/${id}.json`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && typeof data === 'object') {
+          const embedUrl = (data.embedUrl as string) || '';
+          const websiteUrl = (data.websiteUrl as string) || (data.targetUrl as string) || '';
+          if (embedUrl.trim() || websiteUrl.trim()) {
+            const mapped: Video = {
+              id,
+              thumbnailUrl: (data.thumbnailUrl as string) || '',
+              embedUrl: embedUrl.trim(),
+              websiteUrl: websiteUrl.trim(),
+              title: (data.title as string) || 'Untitled video',
+              sourceName: (data.sourceName as string) || 'Marketify',
+              duration: (data.duration as string) || '',
+              status: (data.status as Video['status']) || 'active',
+              views: typeof data.views === 'number' ? (data.views as number) : 0,
+              likes: typeof data.likes === 'number' ? (data.likes as number) : 0,
+              commentsCount: typeof data.commentsCount === 'number' ? (data.commentsCount as number) : 0,
+              createdAt: (data.createdAt as number) || (data.updatedAt as number) || 0,
+              updatedAt: (data.updatedAt as number) || (data.createdAt as number) || 0
+            };
+            setDirectVideo(mapped);
+            setFetchingDirect(false);
+            setNotFound(false);
+            return;
+          }
+        }
+
+        // 2. Fallback to Express backend if hosted on full-stack server
+        fetch(`/api/videos/${id}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((servData) => {
+            if (!isMounted) return;
+            if (servData && servData.video) {
+              setDirectVideo(servData.video);
+              setFetchingDirect(false);
+              setNotFound(false);
+            } else {
+              setFetchingDirect(false);
+              setNotFound(true);
+            }
+          })
+          .catch(() => {
+            if (isMounted) {
+              setFetchingDirect(false);
+              setNotFound(true);
+            }
+          });
+      })
+      .catch(() => {
+        if (isMounted) {
+          setFetchingDirect(false);
+          setNotFound(true);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id, stateVideo, videos]);
 
   const related = useMemo(() => {
     const active = videos.filter((v) => v.status === 'active' && v.id !== id);
@@ -78,37 +168,37 @@ export function VideoPage() {
   useEffect(() => {
     if (!id || !video) return;
     const key = `mk-viewed-${id}`;
-    if (sessionStorage.getItem(key)) return;
-    sessionStorage.setItem(key, '1');
-    void bumpVideoCounter(id, 'views', 1);
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, '1');
+      bumpVideoCounter(id, 'views');
+    }
   }, [id, video]);
 
-  const baseLikes = video ? video.likes : 0;
-  const currentLikes = optimisticLikes !== null ? optimisticLikes : baseLikes;
+  const currentLikes = (optimisticLikes !== null ? optimisticLikes : (video?.likes || 0));
 
-  const onLike = async () => {
+  const onLike = () => {
     if (!id || !video) return;
-    const next = !liked;
-    setLiked(next);
-    localStorage.setItem(`mk-like-${id}`, next ? '1' : '0');
-    const updatedCount = Math.max(0, currentLikes + (next ? 1 : -1));
-    setOptimisticLikes(updatedCount);
-    try {
-      await bumpVideoCounter(id, 'likes', next ? 1 : -1);
-    } catch {
-      setToast('Could not save your like');
-      window.setTimeout(() => setToast(''), 1600);
-    }
+    const newLiked = !liked;
+    setLiked(newLiked);
+    localStorage.setItem(`mk-like-${id}`, newLiked ? '1' : '0');
+    setOptimisticLikes(Math.max(0, currentLikes + (newLiked ? 1 : -1)));
+    bumpVideoCounter(id, 'likes', newLiked ? 1 : -1);
   };
 
   const onShare = async () => {
     if (!video) return;
-    const message = await shareVideo(video.id, video.title);
-    if (message) {
-      setToast(message);
-      window.setTimeout(() => setToast(''), 1600);
+    const res = await shareVideo(video.id, video.title);
+    if (res && res.includes('copied')) {
+      setToast('Link copied to clipboard!');
+      window.setTimeout(() => setToast(''), 2000);
     }
   };
+
+  const handleRelatedPageChange = (newPage: number) => {
+    setRelatedPage(newPage);
+  };
+
+  const isResolving = !video && (fetchingDirect || (loading && !notFound));
 
   return (
     <div className="min-h-screen w-full bg-white dark:bg-ink">
@@ -117,8 +207,12 @@ export function VideoPage() {
         <BannerAd />
 
         <section className="mt-2 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5 dark:bg-panel dark:ring-white/5">
-          {loading && !video ? (
-            <div className="w-full animate-pulse bg-black/10 dark:bg-white/10" style={{ aspectRatio: '16 / 9' }} />
+          {isResolving ? (
+            /* Smooth Fast Loading Spinner - Never show 'This video is not available' while resolving */
+            <div className="w-full flex flex-col items-center justify-center bg-black/10 dark:bg-[#121212]" style={{ aspectRatio: '16 / 9' }}>
+              <div className="h-10 w-10 animate-spin rounded-full border-3 border-brand border-t-transparent" />
+              <p className="mt-3 text-xs text-[#808080] animate-pulse">ভিডিও লোড হচ্ছে...</p>
+            </div>
           ) : video?.embedUrl ? (
             <EmbedPlayer src={video.embedUrl} title={video.title} poster={video.thumbnailUrl} />
           ) : video?.websiteUrl ? (
@@ -138,15 +232,23 @@ export function VideoPage() {
               </div>
             </div>
           ) : (
+            /* Only show if truly not found after both direct fetch and list resolution finish */
             <div className="grid aspect-video place-items-center px-6 text-center">
               <div>
                 <p className="text-sm text-[#606060] dark:text-white/60">
-                  {error ? `Could not load this video: ${error}` : 'This video is not available.'}
+                  This video is not available.
                 </p>
                 <Link to="/" className="mt-2 inline-block text-sm font-medium text-brand">
                   Back to home
                 </Link>
               </div>
+            </div>
+          )}
+
+          {isResolving && (
+            <div className="p-3 space-y-2 animate-pulse">
+              <div className="h-5 w-3/4 rounded bg-black/10 dark:bg-white/10" />
+              <div className="h-4 w-1/3 rounded bg-black/10 dark:bg-white/10" />
             </div>
           )}
 
@@ -197,7 +299,11 @@ export function VideoPage() {
                   aria-pressed={favorite}
                   className="flex items-center justify-center gap-1.5 py-3 text-[13px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
                 >
-                  <BookmarkIcon size={17} fill={favorite ? '#ff3040' : 'none'} color={favorite ? '#ff3040' : 'currentColor'} />
+                  <BookmarkIcon
+                    size={17}
+                    fill={favorite ? '#ff7a18' : 'none'}
+                    color={favorite ? '#ff7a18' : 'currentColor'}
+                  />
                   Favorite
                 </button>
                 <button
@@ -213,44 +319,45 @@ export function VideoPage() {
           )}
         </section>
 
+        {/* Toast */}
         {toast && (
-          <p role="status" className="py-2 text-center text-[13px] font-medium text-brand">
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-[#0f0f0f] px-4 py-2 text-xs font-semibold text-white shadow-lg dark:bg-white dark:text-[#0f0f0f] z-50">
             {toast}
-          </p>
+          </div>
         )}
 
-        <div className="mt-2">
-          <BannerAd />
+        {/* Related videos header */}
+        <div className="mt-6 mb-3 px-1 flex items-center justify-between">
+          <h2 className="text-[17px] font-bold text-[#0f0f0f] dark:text-white">
+            Related Videos
+          </h2>
+          {related.length > 0 && (
+            <span className="text-xs font-medium text-[#606060] dark:text-white/60">
+              Page {relatedPage} of {totalRelatedPages} ({related.length})
+            </span>
+          )}
         </div>
 
-        <div id="related-grid" className="mt-2 grid grid-cols-2 gap-2">
-          {visibleRelated.map((v, index) => (
-            <React.Fragment key={v.id}>
-              <RelatedVideoCard video={v} />
-              {(index + 1) % 2 === 0 && (
-                <div className="col-span-2">
-                  <BannerAd />
-                </div>
-              )}
-            </React.Fragment>
+        {/* Related Videos List */}
+        <div className="space-y-3">
+          {visibleRelated.map((rel) => (
+            <div key={rel.id} className="space-y-1.5">
+              <RelatedVideoCard video={rel} />
+              <BannerAd />
+            </div>
           ))}
         </div>
 
-        <Pagination
-          currentPage={relatedPage}
-          totalPages={totalRelatedPages}
-          onPageChange={(p) => {
-            setRelatedPage(p);
-            const el = document.getElementById('related-grid');
-            if (el) {
-              el.scrollIntoView({ behavior: 'smooth' });
-            }
-          }}
-          totalItems={related.length}
-          pageSize={RELATED_PAGE_SIZE}
-        />
+        {related.length > RELATED_PAGE_SIZE && (
+          <Pagination
+            currentPage={relatedPage}
+            totalPages={totalRelatedPages}
+            onPageChange={handleRelatedPageChange}
+            totalItems={related.length}
+            pageSize={RELATED_PAGE_SIZE}
+          />
+        )}
       </main>
     </div>
   );
 }
-
