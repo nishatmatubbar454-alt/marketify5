@@ -42,6 +42,21 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
     try {
       if (isLocked) {
         localStorage.setItem(LOCKED_STORAGE_KEY, '1');
+
+        // Immediately pause all playing HTML5 media elements and iframes
+        if (typeof document !== 'undefined') {
+          document.querySelectorAll('video, audio').forEach((el) => {
+            try {
+              (el as HTMLMediaElement).pause();
+            } catch {}
+          });
+          document.querySelectorAll('iframe').forEach((iframe) => {
+            try {
+              iframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+              iframe.contentWindow?.postMessage('{"method":"pause"}', '*');
+            } catch {}
+          });
+        }
       } else {
         localStorage.removeItem(LOCKED_STORAGE_KEY);
       }

@@ -1,6 +1,7 @@
 import React from 'react';
-import { AlertTriangleIcon } from 'lucide-react';
+import { AlertTriangleIcon, Lock } from 'lucide-react';
 import { isDirectLink } from '../utils/helpers';
+import { useAppLock } from '../contexts/AppLockContext';
 
 interface EmbedPlayerProps {
   src: string;
@@ -85,6 +86,7 @@ export function extractEmbedUrl(url: string): string {
 }
 
 export function EmbedPlayer({ src, title, poster }: EmbedPlayerProps) {
+  const { isLocked } = useAppLock();
   const [iframeLoaded, setIframeLoaded] = React.useState(false);
 
   React.useEffect(() => {
@@ -95,6 +97,28 @@ export function EmbedPlayer({ src, title, poster }: EmbedPlayerProps) {
     }, 2200);
     return () => clearTimeout(timer);
   }, [src]);
+
+  // If app is locked: completely unmount iframe and video so NO background playback/audio occurs
+  if (isLocked) {
+    return (
+      <div className="relative w-full bg-black flex flex-col items-center justify-center overflow-hidden" style={{ aspectRatio: '16 / 9' }}>
+        {poster && (
+          <img
+            src={poster}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover opacity-20 blur-sm pointer-events-none"
+          />
+        )}
+        <div className="relative z-10 flex flex-col items-center text-white/80 p-4 text-center select-none">
+          <div className="grid h-12 w-12 place-items-center rounded-full bg-red-600/20 border border-red-500/50 text-red-500 shadow-[0_0_20px_rgba(239,68,68,0.35)]">
+            <Lock size={22} className="stroke-[2.2]" />
+          </div>
+          <p className="mt-2.5 text-[13px] font-semibold text-white/90">অ্যাপ লক থাকার কারণে ভিডিও বন্ধ রয়েছে</p>
+          <p className="mt-0.5 text-[11px] text-white/50">লক আনলক করলে ভিডিও আবার চালু হবে</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!src) {
     return (
