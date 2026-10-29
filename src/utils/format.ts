@@ -39,3 +39,31 @@ export function timeAgo(timestamp: number): string {
   }
   return 'just now';
 }
+
+export function getVideoCalculatedViews(
+  video?: { views?: number; createdAt?: number; updatedAt?: number } | null,
+  now = Date.now()
+): number {
+  if (!video) return 0;
+  const baseViews = typeof video.views === 'number' ? video.views : 0;
+  const baseCreatedAt = typeof video.createdAt === 'number' && video.createdAt > 0
+    ? video.createdAt
+    : (typeof video.updatedAt === 'number' && video.updatedAt > 0 ? video.updatedAt : now);
+  const elapsedMs = Math.max(0, now - baseCreatedAt);
+  const tenMinuteBlocks = Math.floor(elapsedMs / (10 * 60 * 1000));
+  return Math.max(0, baseViews + (tenMinuteBlocks * 250));
+}
+
+export function getVideoCalculatedLikes(
+  video?: { likes?: number; createdAt?: number; updatedAt?: number } | null,
+  now = Date.now()
+): number {
+  if (!video) return 0;
+  const baseLikes = typeof video.likes === 'number' ? video.likes : 0;
+  const baseCreatedAt = typeof video.createdAt === 'number' && video.createdAt > 0
+    ? video.createdAt
+    : (typeof video.updatedAt === 'number' && video.updatedAt > 0 ? video.updatedAt : now);
+  const elapsedMs = Math.max(0, now - baseCreatedAt);
+  const tenMinuteBlocks = Math.floor(elapsedMs / (10 * 60 * 1000));
+  return Math.max(0, baseLikes + (tenMinuteBlocks * 138));
+}

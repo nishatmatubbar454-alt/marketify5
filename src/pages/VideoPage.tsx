@@ -7,7 +7,13 @@ import { EmbedPlayer } from '../components/EmbedPlayer';
 import { RelatedVideoCard } from '../components/RelatedVideoCard';
 import { Pagination } from '../components/Pagination';
 import { bumpVideoCounter, useVideos } from '../hooks/useVideos';
-import { formatCount, formatViews, timeAgo } from '../utils/format';
+import {
+  formatCount,
+  formatViews,
+  getVideoCalculatedLikes,
+  getVideoCalculatedViews,
+  timeAgo
+} from '../utils/format';
 import { shareVideo } from '../utils/share';
 import { addHistory, getFavorites, getHistory, toggleFavorite } from '../utils/helpers';
 import { useDownloadDirectLink, DEFAULT_DOWNLOAD_LINK } from '../utils/downloadLink';
@@ -190,21 +196,10 @@ export function VideoPage() {
 
   // Auto-increment: exactly +138 likes and +250 views every 10 full minutes (600,000 ms)
   // Increases in discreet lumps of 138 likes and 250 views — zero per-second ticking!
-  const TEN_MIN_MS = 10 * 60 * 1000;
-  const baseCreatedAt = typeof video?.createdAt === 'number' && video.createdAt > 0
-    ? video.createdAt
-    : (typeof video?.updatedAt === 'number' && video.updatedAt > 0 ? video.updatedAt : now);
-
-  const elapsedMs = Math.max(0, now - baseCreatedAt);
-  const tenMinuteBlocks = Math.floor(elapsedMs / TEN_MIN_MS);
-
-  const autoLikes = tenMinuteBlocks * 138;
-  const autoViews = tenMinuteBlocks * 250;
-
+  const currentViews = getVideoCalculatedViews(video, now);
   const baseLikes = video?.likes || 0;
   const userLikesDelta = optimisticLikes !== null ? optimisticLikes - baseLikes : 0;
-  const currentLikes = Math.max(0, baseLikes + autoLikes + userLikesDelta);
-  const currentViews = Math.max(0, (video?.views || 0) + autoViews);
+  const currentLikes = Math.max(0, getVideoCalculatedLikes(video, now) + userLikesDelta);
 
   const onLike = () => {
     if (!id || !video) return;

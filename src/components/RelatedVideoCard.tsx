@@ -4,6 +4,7 @@ import { HeartIcon, MessageSquareIcon } from 'lucide-react';
 import type { Video } from '../types';
 import { bumpVideoCounter } from '../hooks/useVideos';
 import { addHistory, getOptimizedThumbnail } from '../utils/helpers';
+import { formatViews, getVideoCalculatedViews } from '../utils/format';
 
 export const RelatedVideoCard = React.memo(function RelatedVideoCard({ video }: { video: Video }) {
   const [liked, setLiked] = useState(false);
@@ -28,6 +29,8 @@ export const RelatedVideoCard = React.memo(function RelatedVideoCard({ video }: 
     addHistory(video.id);
   };
 
+  const calculatedViews = getVideoCalculatedViews(video);
+
   const thumbnailContent = (
     <div className="relative w-full" style={{ aspectRatio: '16 / 9' }}>
       {video.thumbnailUrl ? (
@@ -46,8 +49,11 @@ export const RelatedVideoCard = React.memo(function RelatedVideoCard({ video }: 
           <path d="M8 5.5v13l11-6.5-11-6.5z" fill="rgba(255,255,255,0.92)" />
         </svg>
       </span>
+      <span className="pointer-events-none absolute bottom-1.5 left-1.5 z-10 flex items-center gap-1 rounded bg-black/75 px-1.5 py-0.5 text-[10.5px] font-semibold text-white shadow-sm backdrop-blur-xs">
+        {formatViews(calculatedViews)}
+      </span>
       {video.duration && (
-        <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
+        <span className="pointer-events-none absolute bottom-1.5 right-1.5 z-10 rounded bg-black/80 px-1.5 py-0.5 text-[10.5px] font-medium text-white">
           {video.duration}
         </span>
       )}

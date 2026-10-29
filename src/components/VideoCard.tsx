@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookmarkIcon, MoreVerticalIcon, Share2Icon } from 'lucide-react';
 import type { Video } from '../types';
-import { formatViews, timeAgo } from '../utils/format';
+import { formatViews, getVideoCalculatedViews, timeAgo } from '../utils/format';
 import { shareVideo } from '../utils/share';
 import { addHistory, getFavorites, getOptimizedThumbnail, toggleFavorite } from '../utils/helpers';
 import { bumpVideoCounter } from '../hooks/useVideos';
@@ -49,6 +49,8 @@ export const VideoCard = React.memo(function VideoCard({ video, priority = false
     addHistory(video.id);
   };
 
+  const calculatedViews = getVideoCalculatedViews(video);
+
   const thumbnailContent = (
     <div className="relative w-full" style={{ aspectRatio: '16 / 9' }}>
       {video.thumbnailUrl ? (
@@ -68,11 +70,11 @@ export const VideoCard = React.memo(function VideoCard({ video, priority = false
           <path d="M8 5.5v13l11-6.5-11-6.5z" fill="rgba(255,255,255,0.92)" />
         </svg>
       </span>
-      <span className="pointer-events-none absolute bottom-2 left-3 text-[13px] font-medium text-white drop-shadow">
-        {formatViews(video.views)}
+      <span className="pointer-events-none absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded bg-black/75 px-2 py-0.5 text-[11px] sm:text-[12px] font-semibold text-white shadow-md backdrop-blur-xs">
+        {formatViews(calculatedViews)}
       </span>
       {video.duration && (
-        <span className="pointer-events-none absolute bottom-2 right-3 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
+        <span className="pointer-events-none absolute bottom-2 right-2 z-10 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
           {video.duration}
         </span>
       )}
