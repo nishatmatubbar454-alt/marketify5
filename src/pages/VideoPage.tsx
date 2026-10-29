@@ -258,23 +258,23 @@ export function VideoPage() {
 
           {video && (
             <>
-              <div className="px-3 pt-3">
-                <h1 className="text-[15px] font-medium leading-[21px] text-[#0f0f0f] dark:text-white">
+              <div className="px-3 pt-2 pb-0.5">
+                <h1 className="text-[14px] sm:text-[15px] font-semibold leading-[20px] text-[#0f0f0f] dark:text-white">
                   {video.title}
                 </h1>
-                <p className="mt-1 text-[13px] text-[#606060] dark:text-white/60">
+                <p className="mt-0.5 text-[12px] text-[#606060] dark:text-white/60">
                   {video.sourceName ? `${video.sourceName} • ` : ''}
                   {timeAgo(video.createdAt)}
                 </p>
               </div>
-              <div className="flex items-center justify-between px-3 py-3">
-                <span className="flex items-center gap-1.5 text-[13px] text-[#606060] dark:text-white/70">
-                  <span className="grid h-[18px] w-[18px] place-items-center rounded-full bg-[#ff3040]">
-                    <HeartIcon size={11} fill="#fff" color="#fff" />
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <span className="flex items-center gap-1.5 text-[12.5px] text-[#606060] dark:text-white/70">
+                  <span className="grid h-[17px] w-[17px] place-items-center rounded-full bg-[#ff3040]">
+                    <HeartIcon size={10} fill="#fff" color="#fff" />
                   </span>
                   {currentLikes.toLocaleString()} likes
                 </span>
-                <span className="text-[13px] text-[#606060] dark:text-white/70">
+                <span className="text-[12.5px] text-[#606060] dark:text-white/70">
                   {formatViews(video.views)}
                 </span>
               </div>
@@ -283,10 +283,10 @@ export function VideoPage() {
                   type="button"
                   onClick={onLike}
                   aria-pressed={liked}
-                  className="flex items-center justify-center gap-1.5 py-3 text-[13px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
+                  className="flex items-center justify-center gap-1.5 py-2 text-[12.5px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
                 >
                   <HeartIcon
-                    size={17}
+                    size={15}
                     fill={liked ? '#ff3040' : 'none'}
                     color={liked ? '#ff3040' : 'currentColor'}
                   />
@@ -301,10 +301,10 @@ export function VideoPage() {
                     window.setTimeout(() => setToast(''), 1500);
                   }}
                   aria-pressed={favorite}
-                  className="flex items-center justify-center gap-1.5 py-3 text-[13px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
+                  className="flex items-center justify-center gap-1.5 py-2 text-[12.5px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
                 >
                   <BookmarkIcon
-                    size={17}
+                    size={15}
                     fill={favorite ? '#ff7a18' : 'none'}
                     color={favorite ? '#ff7a18' : 'currentColor'}
                   />
@@ -313,9 +313,9 @@ export function VideoPage() {
                 <button
                   type="button"
                   onClick={onShare}
-                  className="flex items-center justify-center gap-1.5 py-3 text-[13px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
+                  className="flex items-center justify-center gap-1.5 py-2 text-[12.5px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
                 >
-                  <Share2Icon size={17} />
+                  <Share2Icon size={15} />
                   Share
                 </button>
               </div>
@@ -330,20 +330,13 @@ export function VideoPage() {
           </div>
         )}
 
-        {/* Related videos header */}
-        <div className="mt-5 mb-2.5 px-1 flex items-center justify-between">
-          <h2 className="text-[16px] sm:text-[17px] font-bold text-[#0f0f0f] dark:text-white">
-            Related Videos
-          </h2>
-          {related.length > 0 && (
-            <span className="text-xs font-medium text-[#606060] dark:text-white/60">
-              Page {relatedPage} of {totalRelatedPages} ({related.length})
-            </span>
-          )}
+        {/* Banner Ad directly below main video player card (as it was originally) */}
+        <div className="mt-2 mb-2">
+          <BannerAd />
         </div>
 
         {/* 2-column Side-by-Side Related Videos Grid */}
-        <div id="related-grid" className="grid grid-cols-2 gap-2 sm:gap-3">
+        <div id="related-grid" className="grid grid-cols-2 gap-2">
           {visibleRelated.map((v, index) => (
             <React.Fragment key={v.id}>
               <RelatedVideoCard video={v} />
