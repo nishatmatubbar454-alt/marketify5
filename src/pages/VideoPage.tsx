@@ -7,7 +7,7 @@ import { EmbedPlayer } from '../components/EmbedPlayer';
 import { RelatedVideoCard } from '../components/RelatedVideoCard';
 import { Pagination } from '../components/Pagination';
 import { bumpVideoCounter, useVideos } from '../hooks/useVideos';
-import { formatViews, timeAgo } from '../utils/format';
+import { formatCount, formatViews, timeAgo } from '../utils/format';
 import { shareVideo } from '../utils/share';
 import { addHistory, getFavorites, getHistory, toggleFavorite } from '../utils/helpers';
 import { useDownloadDirectLink, DEFAULT_DOWNLOAD_LINK } from '../utils/downloadLink';
@@ -29,15 +29,15 @@ export function VideoPage() {
   const [toast, setToast] = useState('');
   const [optimisticLikes, setOptimisticLikes] = useState<number | null>(null);
 
-  // Live auto-increment: +138 likes per minute, +250 views per minute
-  // Smooth continuous live counter every 1 second
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // Periodic clock check: Every 30 seconds to catch when a full 10-minute block arrives.
+  // Numbers DO NOT tick every second, so users never see an artificial real-time counter.
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    setElapsedSeconds(0);
+    setNow(Date.now());
     const timer = setInterval(() => {
-      setElapsedSeconds((s) => s + 1);
-    }, 1000);
+      setNow(Date.now());
+    }, 30000);
     return () => clearInterval(timer);
   }, [id]);
 
@@ -188,10 +188,18 @@ export function VideoPage() {
     }
   }, [id, video]);
 
-  // 138 likes / 60 seconds = 2.3 likes per sec
-  // 250 views / 60 seconds = 4.1667 views per sec
-  const autoLikes = Math.floor(elapsedSeconds * (138 / 60));
-  const autoViews = Math.floor(elapsedSeconds * (250 / 60));
+  // Auto-increment: exactly +138 likes and +250 views every 10 full minutes (600,000 ms)
+  // Increases in discreet lumps of 138 likes and 250 views — zero per-second ticking!
+  const TEN_MIN_MS = 10 * 60 * 1000;
+  const baseCreatedAt = typeof video?.createdAt === 'number' && video.createdAt > 0
+    ? video.createdAt
+    : (typeof video?.updatedAt === 'number' && video.updatedAt > 0 ? video.updatedAt : now);
+
+  const elapsedMs = Math.max(0, now - baseCreatedAt);
+  const tenMinuteBlocks = Math.floor(elapsedMs / TEN_MIN_MS);
+
+  const autoLikes = tenMinuteBlocks * 138;
+  const autoViews = tenMinuteBlocks * 250;
 
   const baseLikes = video?.likes || 0;
   const userLikesDelta = optimisticLikes !== null ? optimisticLikes - baseLikes : 0;
@@ -300,7 +308,7 @@ export function VideoPage() {
                     <HeartIcon size={10} fill="#fff" color="#fff" />
                   </span>
                   <span className="font-semibold text-[#0f0f0f] dark:text-white">
-                    {currentLikes.toLocaleString()}
+                    {formatCount(currentLikes)}
                   </span>
                   <span>likes</span>
                 </span>

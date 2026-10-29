@@ -1,21 +1,25 @@
-export function formatViews(views: number): string {
-  const n = views || 0;
-  if (n >= 1_000_000) {
-    const v = n / 1_000_000;
-    return `${v >= 10 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, '')}M views`;
+export function formatCount(n: number): string {
+  const v = Math.max(0, Math.floor(Number(n) || 0));
+  if (v >= 1_000_000) {
+    const val = v / 1_000_000;
+    const formatted = val >= 100 ? Math.round(val).toString() : val.toFixed(1).replace(/\.0$/, '');
+    return `${formatted}M`;
   }
-  if (n >= 1000) {
-    const v = n / 1000;
-    return `${v >= 10 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, '')}K views`;
+  if (v >= 1000) {
+    const val = v / 1000;
+    if (val >= 999.95) {
+      return '1M';
+    }
+    const formatted = val >= 100 ? Math.round(val).toString() : val.toFixed(1).replace(/\.0$/, '');
+    return `${formatted}k`;
   }
-  return `${n} views`;
+  return String(v);
 }
 
-export function formatCount(n: number): string {
-  const v = n || 0;
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (v >= 1000) return `${(v / 1000).toFixed(1).replace(/\.0$/, '')}K`;
-  return String(v);
+export function formatViews(views: number): string {
+  const n = Math.max(0, Math.floor(Number(views) || 0));
+  const countStr = formatCount(n);
+  return `${countStr} ${n === 1 ? 'view' : 'views'}`;
 }
 
 export function timeAgo(timestamp: number): string {
