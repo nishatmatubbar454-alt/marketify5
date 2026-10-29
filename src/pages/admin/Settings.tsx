@@ -3,6 +3,7 @@ import { AdminLayout } from '../../components/admin/AdminLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import { getImgBBKey, setImgBBKey } from '../../utils/uploadImage';
 import { getContactLink, getTelegramLink, setContactLink, setTelegramLink } from '../../utils/helpers';
+import { useDownloadDirectLink, setDownloadDirectLink, DEFAULT_DOWNLOAD_LINK } from '../../utils/downloadLink';
 
 const DEFAULT_FIREBASE_CONFIG_STR = JSON.stringify({
   apiKey: "AIzaSyDaDfql5hzf8CCFAOVNX0c8xeyfsVJWYQg",
@@ -23,6 +24,16 @@ export function Settings() {
   const [newPass, setNewPass] = useState('');
   const [passMsg, setPassMsg] = useState('');
   const [passError, setPassError] = useState('');
+
+  // Download Direct Link state (connected to Firebase Realtime Database)
+  const { downloadLink } = useDownloadDirectLink();
+  const [downloadUrlInput, setDownloadUrlInput] = useState(downloadLink);
+  const [downloadMsg, setDownloadMsg] = useState('');
+  const [savingDownload, setSavingDownload] = useState(false);
+
+  React.useEffect(() => {
+    setDownloadUrlInput(downloadLink);
+  }, [downloadLink]);
 
   // ImgBB API Key state
   const [imgbbKey, setImgbbKeyInput] = useState(() => getImgBBKey());
@@ -80,6 +91,21 @@ export function Settings() {
     setContactLink(contactUrl.trim());
     setSocialMsg('Telegram & Contact links updated successfully!');
     window.setTimeout(() => setSocialMsg(''), 2500);
+  };
+
+  const handleSaveDownloadLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingDownload(true);
+    setDownloadMsg('');
+    try {
+      await setDownloadDirectLink(downloadUrlInput);
+      setDownloadMsg('✓ ডাউনলোড ডিরেক্ট লিংক সফলভাবে সংরক্ষিত হয়েছে!');
+      window.setTimeout(() => setDownloadMsg(''), 3000);
+    } catch {
+      setDownloadMsg('❌ ডিরেক্ট লিংক সংরক্ষণ ব্যর্থ হয়েছে');
+    } finally {
+      setSavingDownload(false);
+    }
   };
 
   const handleSaveFirebase = (e: React.FormEvent) => {
@@ -143,6 +169,38 @@ export function Settings() {
               className="rounded-md bg-brand px-4 py-2 text-[13px] font-bold text-[#0f0f0f]"
             >
               Save Links
+            </button>
+          </form>
+        </section>
+
+        {/* Video Download Direct Link Management */}
+        <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/5 dark:bg-panel dark:ring-white/5 border-l-4 border-emerald-500">
+          <h2 className="text-[16px] font-semibold text-[#0f0f0f] dark:text-white">
+            ভিডিও ডাউনলোড ডিরেক্ট লিংক (Download Direct Link / Ad Link)
+          </h2>
+          <p className="mt-1 text-[12px] text-[#606060] dark:text-white/50">
+            প্রতিটি ভিডিও পেজের 'Download' বাটনে চাপলে ইউজারকে সরাসরি এই লিংকে নিয়ে যাওয়া হবে। এটি সরাসরি ফায়ারবেসের সাথে যুক্ত এবং পরিবর্তন করার সাথে সাথে পুরো ওয়েবসাইটে রিয়েলটাইমে আপডেট হবে।
+          </p>
+          <form onSubmit={handleSaveDownloadLink} className="mt-3 space-y-3">
+            <label className="block">
+              <span className="block text-[12px] font-semibold uppercase tracking-wide text-[#606060] dark:text-white/50">
+                Direct Download / Monetization URL
+              </span>
+              <input
+                type="text"
+                value={downloadUrlInput}
+                onChange={(e) => setDownloadUrlInput(e.target.value)}
+                placeholder="https://ads-network.markafi189.workers.dev/"
+                className="mt-1.5 w-full rounded-md bg-black/5 px-3 py-2.5 font-mono text-[13px] text-[#0f0f0f] focus:outline-none focus:ring-1 focus:ring-brand dark:bg-white/10 dark:text-white"
+              />
+            </label>
+            {downloadMsg && <p className="text-[13px] font-medium text-emerald-600 dark:text-emerald-400">{downloadMsg}</p>}
+            <button
+              type="submit"
+              disabled={savingDownload}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-[13px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-95 shadow-sm"
+            >
+              {savingDownload ? 'সংরক্ষণ হচ্ছে...' : 'ডিরেক্ট লিংক সেভ করুন'}
             </button>
           </form>
         </section>

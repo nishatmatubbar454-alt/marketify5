@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { BookmarkIcon, HeartIcon, Share2Icon } from 'lucide-react';
+import { BookmarkIcon, HeartIcon, Share2Icon, DownloadIcon } from 'lucide-react';
 import { Header } from '../components/Header';
 import { BannerAd } from '../components/BannerAd';
 import { EmbedPlayer } from '../components/EmbedPlayer';
@@ -10,6 +10,7 @@ import { bumpVideoCounter, useVideos } from '../hooks/useVideos';
 import { formatViews, timeAgo } from '../utils/format';
 import { shareVideo } from '../utils/share';
 import { addHistory, getFavorites, getHistory, toggleFavorite } from '../utils/helpers';
+import { useDownloadDirectLink, DEFAULT_DOWNLOAD_LINK } from '../utils/downloadLink';
 import type { Video } from '../types';
 
 export function VideoPage() {
@@ -17,6 +18,7 @@ export function VideoPage() {
   const location = useLocation();
   const stateVideo = (location.state as { video?: Video } | null)?.video;
   const { videos, loading } = useVideos();
+  const { downloadLink } = useDownloadDirectLink();
 
   const [directVideo, setDirectVideo] = useState<Video | null>(null);
   const [fetchingDirect, setFetchingDirect] = useState(true);
@@ -26,6 +28,18 @@ export function VideoPage() {
   const [favorite, setFavorite] = useState(false);
   const [toast, setToast] = useState('');
   const [optimisticLikes, setOptimisticLikes] = useState<number | null>(null);
+
+  // Live auto-increment: +138 likes per minute, +250 views per minute
+  // Smooth continuous live counter every 1 second
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    setElapsedSeconds(0);
+    const timer = setInterval(() => {
+      setElapsedSeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [id]);
 
   const [relatedPage, setRelatedPage] = useState(1);
   const RELATED_PAGE_SIZE = 12;
@@ -174,14 +188,22 @@ export function VideoPage() {
     }
   }, [id, video]);
 
-  const currentLikes = (optimisticLikes !== null ? optimisticLikes : (video?.likes || 0));
+  // 138 likes / 60 seconds = 2.3 likes per sec
+  // 250 views / 60 seconds = 4.1667 views per sec
+  const autoLikes = Math.floor(elapsedSeconds * (138 / 60));
+  const autoViews = Math.floor(elapsedSeconds * (250 / 60));
+
+  const baseLikes = video?.likes || 0;
+  const userLikesDelta = optimisticLikes !== null ? optimisticLikes - baseLikes : 0;
+  const currentLikes = Math.max(0, baseLikes + autoLikes + userLikesDelta);
+  const currentViews = Math.max(0, (video?.views || 0) + autoViews);
 
   const onLike = () => {
     if (!id || !video) return;
     const newLiked = !liked;
     setLiked(newLiked);
     localStorage.setItem(`mk-like-${id}`, newLiked ? '1' : '0');
-    setOptimisticLikes(Math.max(0, currentLikes + (newLiked ? 1 : -1)));
+    setOptimisticLikes(baseLikes + (newLiked ? 1 : 0));
     bumpVideoCounter(id, 'likes', newLiked ? 1 : -1);
   };
 
@@ -192,6 +214,11 @@ export function VideoPage() {
       setToast('Link copied to clipboard!');
       window.setTimeout(() => setToast(''), 2000);
     }
+  };
+
+  const onDownload = () => {
+    const targetUrl = downloadLink || DEFAULT_DOWNLOAD_LINK;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleRelatedPageChange = (newPage: number) => {
@@ -272,25 +299,30 @@ export function VideoPage() {
                   <span className="grid h-[17px] w-[17px] place-items-center rounded-full bg-[#ff3040]">
                     <HeartIcon size={10} fill="#fff" color="#fff" />
                   </span>
-                  {currentLikes.toLocaleString()} likes
+                  <span className="font-semibold text-[#0f0f0f] dark:text-white">
+                    {currentLikes.toLocaleString()}
+                  </span>
+                  <span>likes</span>
                 </span>
                 <span className="text-[12.5px] text-[#606060] dark:text-white/70">
-                  {formatViews(video.views)}
+                  <span className="font-semibold text-[#0f0f0f] dark:text-white">
+                    {formatViews(currentViews)}
+                  </span>
                 </span>
               </div>
-              <div className="grid grid-cols-3 border-t border-black/10 dark:border-white/10">
+              <div className="grid grid-cols-4 border-t border-black/10 dark:border-white/10 divide-x divide-black/5 dark:divide-white/5">
                 <button
                   type="button"
                   onClick={onLike}
                   aria-pressed={liked}
-                  className="flex items-center justify-center gap-1.5 py-2 text-[12.5px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
+                  className="flex items-center justify-center gap-1.5 py-2 text-[12px] sm:text-[12.5px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
                 >
                   <HeartIcon
                     size={15}
                     fill={liked ? '#ff3040' : 'none'}
                     color={liked ? '#ff3040' : 'currentColor'}
                   />
-                  Like
+                  <span>Like</span>
                 </button>
                 <button
                   type="button"
@@ -301,22 +333,31 @@ export function VideoPage() {
                     window.setTimeout(() => setToast(''), 1500);
                   }}
                   aria-pressed={favorite}
-                  className="flex items-center justify-center gap-1.5 py-2 text-[12.5px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
+                  className="flex items-center justify-center gap-1.5 py-2 text-[12px] sm:text-[12.5px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
                 >
                   <BookmarkIcon
                     size={15}
                     fill={favorite ? '#ff7a18' : 'none'}
                     color={favorite ? '#ff7a18' : 'currentColor'}
                   />
-                  Favorite
+                  <span>Favorite</span>
                 </button>
                 <button
                   type="button"
                   onClick={onShare}
-                  className="flex items-center justify-center gap-1.5 py-2 text-[12.5px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
+                  className="flex items-center justify-center gap-1.5 py-2 text-[12px] sm:text-[12.5px] text-[#0f0f0f] transition-all duration-100 ease-out hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/5 active:scale-95 select-none"
                 >
                   <Share2Icon size={15} />
-                  Share
+                  <span>Share</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onDownload}
+                  className="flex items-center justify-center gap-1.5 py-2 text-[12px] sm:text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 transition-all duration-100 ease-out hover:bg-emerald-50 dark:hover:bg-emerald-950/20 active:scale-95 select-none"
+                  title="ভিডিও ডাউনলোড করুন"
+                >
+                  <DownloadIcon size={15} className="stroke-[2.2]" />
+                  <span>Download</span>
                 </button>
               </div>
             </>

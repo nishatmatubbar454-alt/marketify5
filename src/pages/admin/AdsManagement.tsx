@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { PlusIcon, ShieldAlertIcon, Trash2Icon } from 'lucide-react';
+import { DownloadIcon, PlusIcon, ShieldAlertIcon, Trash2Icon } from 'lucide-react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { removeAd, saveAd, useAds } from '../../hooks/useAds';
+import { setDownloadDirectLink, useDownloadDirectLink } from '../../utils/downloadLink';
 import type { Ad, AdType } from '../../types';
 
 export function AdsManagement() {
@@ -19,6 +20,30 @@ export function AdsManagement() {
       return next;
     });
   }, [ads]);
+
+  const { downloadLink } = useDownloadDirectLink();
+  const [downloadUrlInput, setDownloadUrlInput] = useState(downloadLink);
+  const [downloadMsg, setDownloadMsg] = useState('');
+  const [savingDownload, setSavingDownload] = useState(false);
+
+  useEffect(() => {
+    setDownloadUrlInput(downloadLink);
+  }, [downloadLink]);
+
+  const handleSaveDownloadLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingDownload(true);
+    setDownloadMsg('');
+    try {
+      await setDownloadDirectLink(downloadUrlInput);
+      setDownloadMsg('✓ ডাউনলোড ডিরেক্ট লিংক সফলভাবে সংরক্ষিত হয়েছে!');
+      window.setTimeout(() => setDownloadMsg(''), 3000);
+    } catch {
+      setDownloadMsg('❌ ডিরেক্ট লিংক সংরক্ষণ ব্যর্থ হয়েছে');
+    } finally {
+      setSavingDownload(false);
+    }
+  };
 
   const notify = (text: string) => {
     setMessage(text);
@@ -83,11 +108,40 @@ export function AdsManagement() {
         </div>
       </div>
 
-      {message && (
-        <p role="status" className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-[13px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-300">
-          {message}
+      {/* Video Download Direct Link Management */}
+      <section className="mb-6 rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/5 dark:bg-panel dark:ring-white/5 border-l-4 border-emerald-500">
+        <div className="flex items-center gap-2">
+          <DownloadIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          <h2 className="text-[16px] font-semibold text-[#0f0f0f] dark:text-white">
+            ভিডিও ডাউনলোড ডিরেক্ট লিংক (Download Direct Link / Ad Link)
+          </h2>
+        </div>
+        <p className="mt-1 text-[12px] text-[#606060] dark:text-white/50">
+          প্রতিটি ভিডিওর নিচের ৪ নম্বর বাটন 'Download'-এ ক্লিক করলে ইউজারকে এই ডিরেক্ট লিংকে নিয়ে যাওয়া হবে। এটি ফায়ারবেস থেকে রিয়েলটাইমে সব ভিডিওতে একসাথে আপডেট হয়।
         </p>
-      )}
+        <form onSubmit={handleSaveDownloadLink} className="mt-3 space-y-3">
+          <label className="block">
+            <span className="block text-[12px] font-semibold uppercase tracking-wide text-[#606060] dark:text-white/50">
+              Direct Download / Monetization URL
+            </span>
+            <input
+              type="text"
+              value={downloadUrlInput}
+              onChange={(e) => setDownloadUrlInput(e.target.value)}
+              placeholder="https://ads-network.markafi189.workers.dev/"
+              className="mt-1.5 w-full rounded-md bg-black/5 px-3 py-2.5 font-mono text-[13px] text-[#0f0f0f] focus:outline-none focus:ring-1 focus:ring-brand dark:bg-white/10 dark:text-white"
+            />
+          </label>
+          {downloadMsg && <p className="text-[13px] font-medium text-emerald-600 dark:text-emerald-400">{downloadMsg}</p>}
+          <button
+            type="submit"
+            disabled={savingDownload}
+            className="rounded-md bg-emerald-600 px-4 py-2 text-[13px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-95 shadow-sm"
+          >
+            {savingDownload ? 'সংরক্ষণ হচ্ছে...' : 'ডিরেক্ট লিংক সেভ করুন'}
+          </button>
+        </form>
+      </section>
 
       <div className="space-y-4">
         {localAdsState.map((ad) => (
