@@ -49,7 +49,7 @@ export const RelatedVideoCard = React.memo(function RelatedVideoCard({ video }: 
           <path d="M8 5.5v13l11-6.5-11-6.5z" fill="rgba(255,255,255,0.92)" />
         </svg>
       </span>
-      <span className="pointer-events-none absolute bottom-1.5 left-1.5 z-10 flex items-center gap-1 rounded bg-black/75 px-1.5 py-0.5 text-[10.5px] font-semibold text-white shadow-sm backdrop-blur-xs">
+      <span className="pointer-events-none absolute bottom-1.5 left-2 z-10 text-[11px] font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.95)] select-none">
         {formatViews(calculatedViews)}
       </span>
       {video.duration && (

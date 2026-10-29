@@ -70,7 +70,7 @@ export const VideoCard = React.memo(function VideoCard({ video, priority = false
           <path d="M8 5.5v13l11-6.5-11-6.5z" fill="rgba(255,255,255,0.92)" />
         </svg>
       </span>
-      <span className="pointer-events-none absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded bg-black/75 px-2 py-0.5 text-[11px] sm:text-[12px] font-semibold text-white shadow-md backdrop-blur-xs">
+      <span className="pointer-events-none absolute bottom-2 left-2.5 z-10 text-[12px] sm:text-[13px] font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.95)] select-none">
         {formatViews(calculatedViews)}
       </span>
       {video.duration && (
