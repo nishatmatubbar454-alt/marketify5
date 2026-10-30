@@ -398,7 +398,15 @@ export function Header() {
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <div className="h-9 w-9 rounded-xl overflow-hidden bg-black border border-amber-500/40 p-0.5">
-                  <img src="/app-logo.png" alt="" className="h-full w-full object-contain" />
+                  <img
+                    src="/app-logo.png"
+                    alt="Marketify"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src =
+                        'https://i.ibb.co/fVgpTyRP/file-00000000db7881fab842b1c05ce63eaa.png';
+                    }}
+                    className="h-full w-full object-cover"
+                  />
                 </div>
                 <div>
                   <h4 className="font-bold text-[15px] leading-tight">Marketify অ্যাপ ডাউনলোড</h4>

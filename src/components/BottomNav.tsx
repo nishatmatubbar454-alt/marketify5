@@ -109,13 +109,13 @@ export function BottomNav() {
             className="w-12 h-12 sm:w-13 sm:h-13 rounded-full border-[2.5px] border-[#c98e28] dark:border-[#e2a233] bg-[#fffdfa] dark:bg-[#201f1e] shadow-[0_4px_16px_rgba(201,142,40,0.4)] hover:shadow-[0_6px_20px_rgba(201,142,40,0.5)] flex items-center justify-center cursor-pointer hover:scale-105 active:scale-90 transition-all duration-150 overflow-hidden p-0.5 group"
           >
             <img
-              src="/logo-custom.png"
+              src="/app-logo.png"
               alt="Marketify"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src =
-                  'https://i.ibb.co.com/MxhXk6GR/Background-Eraser-20261024-180032699.png';
+                  'https://i.ibb.co/fVgpTyRP/file-00000000db7881fab842b1c05ce63eaa.png';
               }}
-              className="w-full h-full object-contain scale-110 group-hover:scale-120 transition-transform duration-150"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
             />
           </button>
         </div>

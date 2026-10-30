@@ -112,9 +112,9 @@ export function AppInstallBanner() {
               alt="Marketify App"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src =
-                  'https://i.ibb.co.com/tMC2RhNn/Background-Eraser-20261025-115031994.jpg';
+                  'https://i.ibb.co/fVgpTyRP/file-00000000db7881fab842b1c05ce63eaa.png';
               }}
-              className="h-full w-full object-contain p-0.5"
+              className="h-full w-full object-cover"
             />
           </div>
 
