@@ -292,10 +292,21 @@ export function VideoPage() {
                 <h1 className="text-[14px] sm:text-[15px] font-semibold leading-[20px] text-[#0f0f0f] dark:text-white">
                   {video.title}
                 </h1>
-                <p className="mt-0.5 text-[12px] text-[#606060] dark:text-white/60">
-                  {video.sourceName ? `${video.sourceName} • ` : ''}
-                  {timeAgo(video.createdAt)}
-                </p>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <img
+                    src="/channel-avatar.jpg"
+                    alt={video.sourceName || 'Marketify'}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src =
+                        'https://i.ibb.co/Gv0rgSB8/Screenshot-20261030-114139.jpg';
+                    }}
+                    className="h-4 w-4 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/10"
+                  />
+                  <p className="text-[12px] text-[#606060] dark:text-white/60">
+                    {video.sourceName ? `${video.sourceName} • ` : ''}
+                    {timeAgo(video.createdAt)}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center justify-between px-3 py-1.5">
                 <span className="flex items-center gap-1.5 text-[12.5px] text-[#606060] dark:text-white/70">

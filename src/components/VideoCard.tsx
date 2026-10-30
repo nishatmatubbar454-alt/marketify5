@@ -130,9 +130,17 @@ export const VideoCard = React.memo(function VideoCard({ video, priority = false
             onClick={handleExternalClick}
             aria-hidden="true"
             tabIndex={-1}
-            className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-neutral-900 text-sm font-bold uppercase text-white ring-1 ring-black/10 dark:ring-white/10 active:scale-95 transition-transform"
+            className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full ring-1 ring-black/10 dark:ring-white/10 active:scale-95 transition-transform bg-neutral-900"
           >
-            {(video.sourceName || 'M').charAt(0)}
+            <img
+              src="/channel-avatar.jpg"
+              alt={video.sourceName || 'Marketify'}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src =
+                  'https://i.ibb.co/Gv0rgSB8/Screenshot-20261030-114139.jpg';
+              }}
+              className="h-full w-full object-cover"
+            />
           </a>
         ) : (
           <Link
@@ -141,9 +149,17 @@ export const VideoCard = React.memo(function VideoCard({ video, priority = false
             onClick={handleInternalClick}
             aria-hidden="true"
             tabIndex={-1}
-            className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-neutral-900 text-sm font-bold uppercase text-white ring-1 ring-black/10 dark:ring-white/10 active:scale-95 transition-transform"
+            className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full ring-1 ring-black/10 dark:ring-white/10 active:scale-95 transition-transform bg-neutral-900"
           >
-            {(video.sourceName || 'M').charAt(0)}
+            <img
+              src="/channel-avatar.jpg"
+              alt={video.sourceName || 'Marketify'}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src =
+                  'https://i.ibb.co/Gv0rgSB8/Screenshot-20261030-114139.jpg';
+              }}
+              className="h-full w-full object-cover"
+            />
           </Link>
         )}
         <div className="min-w-0 flex-1">
