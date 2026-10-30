@@ -22,6 +22,7 @@ import { Dashboard } from './pages/admin/Dashboard';
 import { AddVideo } from './pages/admin/AddVideo';
 import { AdsManagement } from './pages/admin/AdsManagement';
 import { Settings } from './pages/admin/Settings';
+import { DeviceAnalytics } from './pages/admin/DeviceAnalytics';
 
 function RequireRole({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -97,6 +98,14 @@ export function App() {
               element={
                 <RequireRole>
                   <AddVideo />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/erfan/analytics"
+              element={
+                <RequireRole>
+                  <DeviceAnalytics />
                 </RequireRole>
               }
             />

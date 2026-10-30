@@ -10,6 +10,7 @@ import { ref as rtdbRef, get as rtdbGet, onValue as rtdbOnValue, set as rtdbSet,
 import { db, realtimeDb } from '../lib/firebase';
 import type { Video, VideoStatus } from '../types';
 import { INITIAL_VIDEOS } from '../data/initialVideos';
+import { getIdbVideos, setIdbVideos } from '../utils/idbCache';
 
 const LOCAL_VIDEOS_KEY = 'mk-local-videos';
 const VIDEOS_EVENT = 'marketify-videos-updated';
@@ -49,6 +50,7 @@ function getLocalVideos(): Video[] {
 function saveLocalVideos(list: Video[]) {
   const filtered = list.filter(isValidVideo);
   inMemoryVideosCache = filtered;
+  void setIdbVideos(filtered);
 }
 
 function mapVideo(id: string, data: Record<string, unknown>): Video | null {
@@ -105,6 +107,19 @@ function initSharedVideosListener() {
 
   window.addEventListener(VIDEOS_EVENT, handleLocalSync);
   window.addEventListener('storage', handleLocalSync);
+
+  // Instantly load cached 1,500+ videos from local IndexedDB (~10-20ms)
+  getIdbVideos()
+    .then((cached) => {
+      if (cached && cached.length > 0) {
+        if (sharedVideos.length === 0 || sharedVideos.length < cached.length || !areVideosEqual(sharedVideos, cached)) {
+          sharedVideos = cached;
+          inMemoryVideosCache = cached;
+          notifyVideoSubscribers();
+        }
+      }
+    })
+    .catch(() => {});
 
   // Directly load from Firebase Realtime Database (works on Cloudflare Workers, static CDN, or Node)
   const loadVideosFromFirebase = async (): Promise<boolean> => {
