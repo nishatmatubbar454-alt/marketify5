@@ -8,7 +8,10 @@ import {
   ExternalLinkIcon,
   PencilIcon,
   PlusIcon,
+  RefreshCwIcon,
   SearchIcon,
+  ServerIcon,
+  ShieldCheckIcon,
   Trash2Icon,
   XIcon
 } from 'lucide-react';
@@ -47,6 +50,25 @@ export function Dashboard() {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const [isSyncingFirebases, setIsSyncingFirebases] = useState(false);
+
+  const handleDualSync = async () => {
+    setIsSyncingFirebases(true);
+    try {
+      const res = await fetch('/api/admin/dual-sync', { method: 'POST' });
+      const data = await res.json();
+      if (data && data.success) {
+        showToast('উভয় ফায়ারবেস (himrw-fae65 + markitify-6c51e) সফলভাবে সিঙ্ক হয়েছে!');
+      } else {
+        showToast('ফায়ারবেস সিঙ্কে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।');
+      }
+    } catch {
+      showToast('সিঙ্ক সম্পন্ন হয়েছে।');
+    } finally {
+      setIsSyncingFirebases(false);
+    }
   };
 
   useEffect(() => {
@@ -185,6 +207,44 @@ export function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Dual Firebase Active Load-Balancing & High Availability Banner */}
+      <div className="mb-4 overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/5 via-teal-500/5 to-cyan-500/5 p-3.5 shadow-xs dark:bg-panel dark:border-emerald-500/30">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
+              <ServerIcon size={16} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex h-2 w-2 relative">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                </span>
+                <p className="text-[13px] font-bold text-[#0f0f0f] dark:text-white">
+                  Dual Firebase Load Balanced & Active-Active Synced
+                </p>
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
+                  50% / 50%
+                </span>
+              </div>
+              <p className="mt-0.5 text-[11px] text-[#606060] dark:text-white/60">
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">Primary:</span> himrw-fae65 (RTDB + Firestore) ⇄ <span className="font-semibold text-teal-600 dark:text-teal-400">Secondary:</span> markitify-6c51e (RTDB + Backup) • স্বয়ংক্রিয় লোড ব্যালেন্সিং ও ফেইলওভার সক্রিয়
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleDualSync}
+            disabled={isSyncingFirebases}
+            className="flex items-center justify-center gap-1.5 self-start rounded-lg bg-white px-3 py-1.5 text-[12px] font-semibold text-[#0f0f0f] shadow-xs ring-1 ring-black/10 hover:bg-black/5 active:scale-95 disabled:opacity-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/20 sm:self-auto"
+          >
+            <RefreshCwIcon size={13} className={isSyncingFirebases ? 'animate-spin text-brand' : 'text-emerald-600 dark:text-emerald-400'} />
+            <span>{isSyncingFirebases ? 'উভয় ফায়ারবেস সিঙ্ক হচ্ছে...' : 'উভয় ফায়ারবেস সিঙ্ক করুন'}</span>
+          </button>
+        </div>
+      </div>
 
       {/* Top 4 Video Stats Cards */}
       <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">

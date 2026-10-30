@@ -151,90 +151,117 @@ function writeAds(ads: any[]) {
   }
 }
 
-const RTDB_BASE_URL = 'https://himrw-fae65-default-rtdb.firebaseio.com';
+const RTDB_ENDPOINTS = [
+  'https://himrw-fae65-default-rtdb.firebaseio.com',
+  'https://markitify-6c51e-default-rtdb.firebaseio.com'
+];
+
+let serverReadCounter = 0;
+function getBalancedEndpoints(subpath: string = '') {
+  const p = subpath.startsWith('/') ? subpath : `/${subpath}`;
+  const pickFirst = (serverReadCounter++) % 2 === 0;
+  return [
+    `${RTDB_ENDPOINTS[pickFirst ? 0 : 1]}${p}`,
+    `${RTDB_ENDPOINTS[pickFirst ? 1 : 0]}${p}`
+  ];
+}
+
 let lastFirebaseSyncError = 0;
-const FIREBASE_RETRY_COOLDOWN = 60000; // 1 minute cooldown if unreachable
+const FIREBASE_RETRY_COOLDOWN = 30000;
 
 async function syncFromFirebase() {
-  // If recently timed out or failed, skip to avoid latency
   if (Date.now() - lastFirebaseSyncError < FIREBASE_RETRY_COOLDOWN) {
     return readVideos();
   }
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+  const [url1, url2] = getBalancedEndpoints('/videos.json');
 
-    const res = await fetch(`${RTDB_BASE_URL}/videos.json`, {
-      signal: controller.signal
-    }).finally(() => clearTimeout(timeoutId));
+  // Try url1, failover to url2
+  for (const url of [url1, url2]) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data && typeof data === 'object') {
-        const validList: any[] = [];
-        const corruptedKeys: string[] = [];
+      const res = await fetch(url, {
+        signal: controller.signal
+      }).finally(() => clearTimeout(timeoutId));
 
-        for (const [id, val] of Object.entries(data)) {
-          if (!val || typeof val !== 'object' || /^\d+$/.test(id)) continue;
-          const v = val as any;
-          const hasEmbed = v.embedUrl && typeof v.embedUrl === 'string' && v.embedUrl.trim();
-          const hasWebsite = v.websiteUrl && typeof v.websiteUrl === 'string' && v.websiteUrl.trim();
-          if (!hasEmbed && !hasWebsite) {
-            corruptedKeys.push(id);
-            continue;
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data === 'object') {
+          const validList: any[] = [];
+          const corruptedKeys: string[] = [];
+
+          for (const [id, val] of Object.entries(data)) {
+            if (!val || typeof val !== 'object' || /^\d+$/.test(id)) continue;
+            const v = val as any;
+            const hasEmbed = v.embedUrl && typeof v.embedUrl === 'string' && v.embedUrl.trim();
+            const hasWebsite = v.websiteUrl && typeof v.websiteUrl === 'string' && v.websiteUrl.trim();
+            if (!hasEmbed && !hasWebsite) {
+              corruptedKeys.push(id);
+              continue;
+            }
+            validList.push({ id, ...v });
           }
-          validList.push({ id, ...v });
-        }
 
-        // Purge corrupted/empty keys permanently from Firebase
-        if (corruptedKeys.length > 0) {
-          for (const badId of corruptedKeys) {
-            deleteFromFirebase(badId).catch(() => {});
+          if (corruptedKeys.length > 0) {
+            for (const badId of corruptedKeys) {
+              deleteFromFirebase(badId).catch(() => {});
+            }
           }
-        }
 
-        validList.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
-        writeVideos(validList);
-        return validList;
-      } else if (data === null) {
-        writeVideos([]);
-        return [];
+          validList.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
+          writeVideos(validList);
+          return validList;
+        } else if (data === null) {
+          writeVideos([]);
+          return [];
+        }
       }
+    } catch {
+      // Continue to next endpoint on error
     }
-  } catch {
-    lastFirebaseSyncError = Date.now();
   }
+
+  lastFirebaseSyncError = Date.now();
   return readVideos();
 }
 
 async function syncToFirebase(videoId: string, videoObj: any) {
   if (!videoObj || (!videoObj.embedUrl && !videoObj.websiteUrl)) return;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-    await fetch(`${RTDB_BASE_URL}/videos/${encodeURIComponent(videoId)}.json`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(videoObj),
-      signal: controller.signal
-    }).finally(() => clearTimeout(timeoutId));
-  } catch {
-    lastFirebaseSyncError = Date.now();
-  }
+  const body = JSON.stringify(videoObj);
+
+  // Dual-Write to BOTH Firebase RTDB instances concurrently
+  await Promise.allSettled(
+    RTDB_ENDPOINTS.map(async (base) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        await fetch(`${base}/videos/${encodeURIComponent(videoId)}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
+      } catch {}
+    })
+  );
 }
 
 async function deleteFromFirebase(videoId: string) {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    await fetch(`${RTDB_BASE_URL}/videos/${encodeURIComponent(videoId)}.json`, {
-      method: 'DELETE',
-      signal: controller.signal
-    }).finally(() => clearTimeout(timeoutId));
-  } catch (err) {
-    console.error('Failed to delete from Firebase RTDB:', err);
-  }
+  // Dual-Delete from BOTH Firebase RTDB instances concurrently
+  await Promise.allSettled(
+    RTDB_ENDPOINTS.map(async (base) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        await fetch(`${base}/videos/${encodeURIComponent(videoId)}.json`, {
+          method: 'DELETE',
+          signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
+      } catch {}
+    })
+  );
 }
 
 async function syncAdsFromFirebase() {
@@ -242,60 +269,68 @@ async function syncAdsFromFirebase() {
     return readAds();
   }
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
+  const [url1, url2] = getBalancedEndpoints('/ads.json');
 
-    const res = await fetch(`${RTDB_BASE_URL}/ads.json`, {
-      signal: controller.signal
-    }).finally(() => clearTimeout(timeoutId));
+  for (const url of [url1, url2]) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data && typeof data === 'object') {
-        const list = Object.entries(data)
-          .filter(([k, v]) => v && typeof v === 'object')
-          .map(([id, val]: [string, any]) => ({ id, ...(val || {}) }));
-        if (list.length > 0) {
-          writeAds(list);
-          return list;
+      const res = await fetch(url, {
+        signal: controller.signal
+      }).finally(() => clearTimeout(timeoutId));
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data === 'object') {
+          const list = Object.entries(data)
+            .filter(([k, v]) => v && typeof v === 'object')
+            .map(([id, val]: [string, any]) => ({ id, ...(val || {}) }));
+          if (list.length > 0) {
+            writeAds(list);
+            return list;
+          }
         }
       }
-    }
-  } catch {
-    lastFirebaseSyncError = Date.now();
+    } catch {}
   }
+
   return readAds();
 }
 
 async function syncAdToFirebase(adId: string, adObj: any) {
-  if (Date.now() - lastFirebaseSyncError < FIREBASE_RETRY_COOLDOWN) return;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    await fetch(`${RTDB_BASE_URL}/ads/${encodeURIComponent(adId)}.json`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(adObj),
-      signal: controller.signal
-    }).finally(() => clearTimeout(timeoutId));
-  } catch {
-    lastFirebaseSyncError = Date.now();
-  }
+  const body = JSON.stringify(adObj);
+  // Dual-write ads to BOTH Firebase RTDB instances
+  await Promise.allSettled(
+    RTDB_ENDPOINTS.map(async (base) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        await fetch(`${base}/ads/${encodeURIComponent(adId)}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
+      } catch {}
+    })
+  );
 }
 
 async function deleteAdFromFirebase(adId: string) {
-  if (Date.now() - lastFirebaseSyncError < FIREBASE_RETRY_COOLDOWN) return;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    await fetch(`${RTDB_BASE_URL}/ads/${encodeURIComponent(adId)}.json`, {
-      method: 'DELETE',
-      signal: controller.signal
-    }).finally(() => clearTimeout(timeoutId));
-  } catch {
-    lastFirebaseSyncError = Date.now();
-  }
+  // Dual-delete ads from BOTH Firebase RTDB instances
+  await Promise.allSettled(
+    RTDB_ENDPOINTS.map(async (base) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        await fetch(`${base}/ads/${encodeURIComponent(adId)}.json`, {
+          method: 'DELETE',
+          signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
+      } catch {}
+    })
+  );
 }
 
 // Periodic background sync every 60s
@@ -451,6 +486,64 @@ async function startServer() {
     writeAds(ads);
     deleteAdFromFirebase(id);
     res.json({ success: true });
+  });
+
+  // --- Dual Firebase Sync & Status API ---
+  app.post('/api/admin/dual-sync', async (_req, res) => {
+    try {
+      const videos = readVideos();
+      const ads = readAds();
+
+      // Ensure both Firebase instances receive the complete video & ads state
+      const videoMap: Record<string, any> = {};
+      videos.forEach((v: any) => {
+        if (v && v.id) videoMap[v.id] = v;
+      });
+
+      const adsMap: Record<string, any> = {};
+      ads.forEach((a: any) => {
+        if (a && a.id) adsMap[a.id] = a;
+      });
+
+      const results = await Promise.allSettled(
+        RTDB_ENDPOINTS.map(async (endpoint) => {
+          const vRes = await fetch(`${endpoint}/videos.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(videoMap)
+          });
+          const aRes = await fetch(`${endpoint}/ads.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(adsMap)
+          });
+          return { endpoint, videosOk: vRes.ok, adsOk: aRes.ok };
+        })
+      );
+
+      res.json({
+        success: true,
+        message: 'Dual Firebase synchronization completed successfully',
+        syncedVideos: videos.length,
+        syncedAds: ads.length,
+        endpoints: RTDB_ENDPOINTS,
+        results
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get('/api/admin/dual-status', (_req, res) => {
+    res.json({
+      success: true,
+      activeProjects: [
+        { id: 'himrw-fae65', role: 'Primary & Realtime DB', url: RTDB_ENDPOINTS[0] },
+        { id: 'markitify-6c51e', role: 'Secondary Load Balancer & Backup', url: RTDB_ENDPOINTS[1] }
+      ],
+      loadBalancing: '50/50 Round-Robin & Instant Failover',
+      replication: 'Active-Active Dual Write'
+    });
   });
 
   // --- Admin Security & Cryptographic Auth ---

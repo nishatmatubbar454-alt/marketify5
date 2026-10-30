@@ -1,5 +1,5 @@
 import { ref as rtdbRef, set as rtdbSet, get as rtdbGet, onValue as rtdbOnValue } from 'firebase/database';
-import { realtimeDb } from '../lib/firebase';
+import { primaryRealtimeDb, secondaryRealtimeDb } from '../lib/firebase';
 import { useEffect, useState } from 'react';
 
 const DEVICE_ID_KEY = 'mk_device_id';
@@ -32,28 +32,35 @@ export function isStandaloneApp(): boolean {
   );
 }
 
-// Record an app installation event in Firebase Realtime Database
+// Record an app installation event in BOTH Firebase Realtime Databases (dual sync)
 export async function recordAppInstall(platformOverride?: string) {
   const deviceId = getDeviceId();
   const platform = platformOverride || detectDevicePlatform();
   const now = Date.now();
 
-  // 1. Save to Firebase Realtime Database
-  try {
-    const installRef = rtdbRef(realtimeDb, `analytics/installedDevices/${deviceId}`);
-    await rtdbSet(installRef, {
-      deviceId,
-      platform,
-      installedAt: now,
-      lastActiveAt: now,
-      isStandalone: true
-    });
+  const installPayload = {
+    deviceId,
+    platform,
+    installedAt: now,
+    lastActiveAt: now,
+    isStandalone: true
+  };
 
-    // Increment total install counter
-    const totalRef = rtdbRef(realtimeDb, 'analytics/totalInstalls');
-    const snap = await rtdbGet(totalRef);
-    const current = (snap.val() as number) || 0;
-    await rtdbSet(totalRef, current + 1);
+  // 1. Dual Save to both Firebase Realtime Databases
+  try {
+    await Promise.allSettled(
+      [primaryRealtimeDb, secondaryRealtimeDb].map(async (rtdb) => {
+        try {
+          const installRef = rtdbRef(rtdb, `analytics/installedDevices/${deviceId}`);
+          await rtdbSet(installRef, installPayload);
+
+          const totalRef = rtdbRef(rtdb, 'analytics/totalInstalls');
+          const snap = await rtdbGet(totalRef);
+          const current = (snap.val() as number) || 0;
+          await rtdbSet(totalRef, current + 1);
+        } catch {}
+      })
+    );
   } catch (err) {
     console.warn('Could not record install to Firebase:', err);
   }
@@ -68,7 +75,7 @@ export async function recordAppInstall(platformOverride?: string) {
   } catch {}
 }
 
-// Track device activity and presence on app load
+// Track device activity and presence on app load across both Firebase instances
 export function trackDevicePresence() {
   if (typeof window === 'undefined') return;
 
@@ -78,31 +85,33 @@ export function trackDevicePresence() {
   const now = Date.now();
 
   try {
-    // If the app is launched as an installed standalone app, ensure it's tracked in installedDevices
-    if (isInstalled) {
-      const installedDevRef = rtdbRef(realtimeDb, `analytics/installedDevices/${deviceId}`);
-      rtdbGet(installedDevRef)
-        .then((snap) => {
-          const existing = snap.val();
-          rtdbSet(installedDevRef, {
-            deviceId,
-            platform,
-            installedAt: existing?.installedAt || now,
-            lastActiveAt: now,
-            isStandalone: true
-          }).catch(() => {});
-        })
-        .catch(() => {});
-    }
+    [primaryRealtimeDb, secondaryRealtimeDb].forEach((rtdb) => {
+      // If the app is launched as an installed standalone app, ensure it's tracked in installedDevices
+      if (isInstalled) {
+        const installedDevRef = rtdbRef(rtdb, `analytics/installedDevices/${deviceId}`);
+        rtdbGet(installedDevRef)
+          .then((snap) => {
+            const existing = snap.val();
+            rtdbSet(installedDevRef, {
+              deviceId,
+              platform,
+              installedAt: existing?.installedAt || now,
+              lastActiveAt: now,
+              isStandalone: true
+            }).catch(() => {});
+          })
+          .catch(() => {});
+      }
 
-    // Always update last active device ping
-    const activeRef = rtdbRef(realtimeDb, `analytics/allActiveDevices/${deviceId}`);
-    rtdbSet(activeRef, {
-      deviceId,
-      platform,
-      lastActiveAt: now,
-      isStandalone: isInstalled
-    }).catch(() => {});
+      // Always update last active device ping
+      const activeRef = rtdbRef(rtdb, `analytics/allActiveDevices/${deviceId}`);
+      rtdbSet(activeRef, {
+        deviceId,
+        platform,
+        lastActiveAt: now,
+        isStandalone: isInstalled
+      }).catch(() => {});
+    });
   } catch {}
 }
 
@@ -136,65 +145,74 @@ export function useAppAnalytics(): AppAnalyticsStats {
   });
 
   useEffect(() => {
-    // Realtime listener for analytics node in Firebase RTDB
-    const analyticsRef = rtdbRef(realtimeDb, 'analytics');
+    // 50/50 balance between primary and secondary for analytics listener
+    const primaryRef = rtdbRef(primaryRealtimeDb, 'analytics');
+    const secondaryRef = rtdbRef(secondaryRealtimeDb, 'analytics');
 
-    const unsubscribe = rtdbOnValue(
-      analyticsRef,
-      (snapshot) => {
-        const val = snapshot.val();
-        let totalInstalls = 0;
-        let devices: InstalledDevice[] = [];
+    const handleSnapshot = (snapshot: any) => {
+      const val = snapshot.val();
+      let totalInstalls = 0;
+      let devices: InstalledDevice[] = [];
 
-        if (val && typeof val === 'object') {
-          totalInstalls = Number(val.totalInstalls) || 0;
+      if (val && typeof val === 'object') {
+        totalInstalls = Number(val.totalInstalls) || 0;
 
-          if (val.installedDevices && typeof val.installedDevices === 'object') {
-            devices = Object.values(val.installedDevices) as InstalledDevice[];
-          }
+        if (val.installedDevices && typeof val.installedDevices === 'object') {
+          devices = Object.values(val.installedDevices) as InstalledDevice[];
         }
+      }
 
-        // If totalInstalls is lower than unique devices, use devices length
-        const effectiveTotal = Math.max(totalInstalls, devices.length);
+      const effectiveTotal = Math.max(totalInstalls, devices.length);
+      const androidCount = devices.filter((d) => d.platform === 'Android').length;
+      const iosCount = devices.filter((d) => d.platform === 'iOS').length;
+      const desktopCount = devices.filter((d) => d.platform === 'Desktop').length;
 
-        const androidCount = devices.filter((d) => d.platform === 'Android').length;
-        const iosCount = devices.filter((d) => d.platform === 'iOS').length;
-        const desktopCount = devices.filter((d) => d.platform === 'Desktop').length;
+      devices.sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
 
-        // Sort devices by last active descending
-        devices.sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
+      setStats({
+        totalInstalls: effectiveTotal,
+        installedPhonesCount: devices.length,
+        androidCount,
+        iosCount,
+        desktopCount,
+        devices,
+        loading: false
+      });
+    };
 
-        setStats({
-          totalInstalls: effectiveTotal,
-          installedPhonesCount: devices.length,
-          androidCount,
-          iosCount,
-          desktopCount,
-          devices,
-          loading: false
-        });
-      },
+    let unsubSecondary = () => {};
+    const unsubPrimary = rtdbOnValue(
+      primaryRef,
+      handleSnapshot,
       () => {
-        // Fallback to local server endpoint if Firebase RTDB fails
-        fetch('/api/analytics/stats')
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data) => {
-            if (data && data.stats) {
-              setStats((prev) => ({
-                ...prev,
-                totalInstalls: data.stats.appInstalls || 0,
-                loading: false
-              }));
-            }
-          })
-          .catch(() => {
-            setStats((prev) => ({ ...prev, loading: false }));
-          });
+        // Failover to secondary Firebase RTDB if primary fails
+        unsubSecondary = rtdbOnValue(
+          secondaryRef,
+          handleSnapshot,
+          () => {
+            // Final fallback to local server endpoint
+            fetch('/api/analytics/stats')
+              .then((res) => (res.ok ? res.json() : null))
+              .then((data) => {
+                if (data && data.stats) {
+                  setStats((prev) => ({
+                    ...prev,
+                    totalInstalls: data.stats.appInstalls || 0,
+                    loading: false
+                  }));
+                }
+              })
+              .catch(() => {
+                setStats((prev) => ({ ...prev, loading: false }));
+              });
+          }
+        );
       }
     );
 
     return () => {
-      unsubscribe();
+      unsubPrimary();
+      unsubSecondary();
     };
   }, []);
 

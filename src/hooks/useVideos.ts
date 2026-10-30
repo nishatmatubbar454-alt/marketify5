@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import {
-  collection,
-  deleteDoc,
-  doc,
-  increment,
-  setDoc
+  increment
 } from 'firebase/firestore';
-import { ref as rtdbRef, get as rtdbGet, onValue as rtdbOnValue, set as rtdbSet, remove as rtdbRemove } from 'firebase/database';
-import { db, realtimeDb } from '../lib/firebase';
+import { ref as rtdbRef, get as rtdbGet } from 'firebase/database';
+import {
+  primaryRealtimeDb,
+  secondaryRealtimeDb,
+  loadBalancedFetch,
+  dualRtdbSet,
+  dualRtdbRemove,
+  dualFirestoreSetDoc,
+  dualFirestoreDeleteDoc
+} from '../lib/firebase';
 import type { Video, VideoStatus } from '../types';
 import { INITIAL_VIDEOS } from '../data/initialVideos';
 import { getIdbVideos, setIdbVideos } from '../utils/idbCache';
@@ -121,11 +125,11 @@ function initSharedVideosListener() {
     })
     .catch(() => {});
 
-  // Directly load from Firebase Realtime Database (works on Cloudflare Workers, static CDN, or Node)
+  // Load videos with 50/50 load balancing across himrw-fae65 and markitify-6c51e
   const loadVideosFromFirebase = async (): Promise<boolean> => {
-    // 1. Direct REST fetch (fastest, universally accessible without SDK overhead)
+    // 1. Dual-balanced direct REST fetch (fastest, zero SDK overhead, instant failover)
     try {
-      const res = await fetch('https://himrw-fae65-default-rtdb.firebaseio.com/videos.json');
+      const res = await loadBalancedFetch('/videos.json');
       if (res.ok) {
         const val = await res.json();
         if (val && typeof val === 'object') {
@@ -145,25 +149,27 @@ function initSharedVideosListener() {
       }
     } catch {}
 
-    // 2. Fallback to Firebase SDK rtdbGet
-    try {
-      const snap = await rtdbGet(rtdbRef(realtimeDb, 'videos'));
-      const val = snap.val();
-      if (val && typeof val === 'object') {
-        const remoteList: Video[] = Object.entries(val)
-          .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
-          .map(([k, v]) => mapVideo(k, v as Record<string, unknown>))
-          .filter((v: Video | null): v is Video => v !== null && isValidVideo(v))
-          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    // 2. Fallback to Firebase SDK rtdbGet (tries primary, then secondary)
+    for (const rtdb of [primaryRealtimeDb, secondaryRealtimeDb]) {
+      try {
+        const snap = await rtdbGet(rtdbRef(rtdb, 'videos'));
+        const val = snap.val();
+        if (val && typeof val === 'object') {
+          const remoteList: Video[] = Object.entries(val)
+            .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
+            .map(([k, v]) => mapVideo(k, v as Record<string, unknown>))
+            .filter((v: Video | null): v is Video => v !== null && isValidVideo(v))
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-        if (remoteList.length > 0 && !areVideosEqual(sharedVideos, remoteList)) {
-          sharedVideos = remoteList;
-          saveLocalVideos(remoteList);
-          notifyVideoSubscribers();
-          return true;
+          if (remoteList.length > 0 && !areVideosEqual(sharedVideos, remoteList)) {
+            sharedVideos = remoteList;
+            saveLocalVideos(remoteList);
+            notifyVideoSubscribers();
+            return true;
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
     return false;
   };
@@ -300,10 +306,9 @@ export async function saveVideo(
   notifyVideoSubscribers();
   emitVideosUpdated();
 
-  // 2. Background sync to Realtime DB & server API
+  // 2. Dual-Write Background sync to both Firebase RTDBs & server API
   try {
-    const videoRef = rtdbRef(realtimeDb, `videos/${targetId}`);
-    rtdbSet(videoRef, videoData).catch(() => {});
+    dualRtdbSet(`videos/${targetId}`, videoData).catch(() => {});
   } catch {}
 
   fetch('/api/videos', {
@@ -313,8 +318,7 @@ export async function saveVideo(
   }).catch(() => {});
 
   try {
-    const ref = doc(db, 'videos', targetId);
-    setDoc(ref, videoData, { merge: true }).catch(() => {});
+    dualFirestoreSetDoc('videos', targetId, videoData).catch(() => {});
   } catch {}
 
   return targetId;
@@ -328,19 +332,16 @@ export async function deleteVideo(id: string) {
   notifyVideoSubscribers();
   emitVideosUpdated();
 
+  // Dual remove from both Firebase RTDBs
   try {
-    const videoRef = rtdbRef(realtimeDb, `videos/${id}`);
-    rtdbRemove(videoRef).catch(() => {});
+    dualRtdbRemove(`videos/${id}`).catch(() => {});
   } catch {}
-
-  fetch(`https://himrw-fae65-default-rtdb.firebaseio.com/videos/${encodeURIComponent(id)}.json`, {
-    method: 'DELETE'
-  }).catch(() => {});
 
   fetch(`/api/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
 
+  // Dual delete from both Firestore databases
   try {
-    deleteDoc(doc(db, 'videos', id)).catch(() => {});
+    dualFirestoreDeleteDoc('videos', id).catch(() => {});
   } catch {}
 }
 
@@ -366,9 +367,9 @@ export async function bumpVideoCounter(
     emitVideosUpdated();
   });
 
+  // Dual update counter in both Firebase RTDBs
   try {
-    const valRef = rtdbRef(realtimeDb, `videos/${id}/${field}`);
-    rtdbSet(valRef, nextVal).catch(() => {});
+    dualRtdbSet(`videos/${id}/${field}`, nextVal).catch(() => {});
   } catch {}
 
   try {
@@ -379,9 +380,9 @@ export async function bumpVideoCounter(
     }).catch(() => {});
   } catch {}
 
+  // Dual increment in both Firestore databases
   try {
-    const ref = doc(db, 'videos', id);
-    setDoc(ref, { [field]: increment(by), updatedAt: Date.now() }, { merge: true }).catch(() => {});
+    dualFirestoreSetDoc('videos', id, { [field]: increment(by), updatedAt: Date.now() }, { merge: true }).catch(() => {});
   } catch {}
 
   return nextVal;
