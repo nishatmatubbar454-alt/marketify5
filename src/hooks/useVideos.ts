@@ -15,6 +15,7 @@ import {
 import type { Video, VideoStatus } from '../types';
 import { INITIAL_VIDEOS } from '../data/initialVideos';
 import { getIdbVideos, setIdbVideos } from '../utils/idbCache';
+import { isPermanentlyLocked } from '../utils/security';
 
 const LOCAL_VIDEOS_KEY = 'mk-local-videos';
 const VIDEOS_EVENT = 'marketify-videos-updated';
@@ -78,7 +79,8 @@ function mapVideo(id: string, data: Record<string, unknown>): Video | null {
     likes: typeof data.likes === 'number' ? (data.likes as number) : 0,
     commentsCount: typeof data.commentsCount === 'number' ? (data.commentsCount as number) : 0,
     createdAt: (data.createdAt as number) || (data.updatedAt as number) || 0,
-    updatedAt: (data.updatedAt as number) || (data.createdAt as number) || 0
+    updatedAt: (data.updatedAt as number) || (data.createdAt as number) || 0,
+    deletedAt: typeof data.deletedAt === 'number' ? data.deletedAt : undefined
   };
 }
 
@@ -324,25 +326,86 @@ export async function saveVideo(
   return targetId;
 }
 
-export async function deleteVideo(id: string) {
+/**
+ * Moves video to 30-Day Recycle Bin (Soft Delete).
+ * If the video is > 30 days old, deletion is strictly prohibited (Permanently Locked).
+ * Physical data in Firebase is NEVER wiped out.
+ */
+export async function trashVideo(id: string): Promise<void> {
   const local = getLocalVideos();
-  const updated = local.filter((v) => v.id !== id);
+  const existing = local.find((v) => v.id === id);
+  if (!existing) return;
+
+  if (isPermanentlyLocked(existing)) {
+    throw new Error('এই ভিডিওটি ৩০ দিনের বেশি পুরনো হওয়ায় এটি স্থায়ীভাবে লক হয়ে গেছে। এটি ডিলিট করা নিষিদ্ধ।');
+  }
+
+  const now = Date.now();
+  const trashedVideo: Video = {
+    ...existing,
+    status: 'trashed',
+    deletedAt: now,
+    updatedAt: now
+  };
+
+  const updated = local.map((v) => (v.id === id ? trashedVideo : v));
   sharedVideos = updated;
   saveLocalVideos(updated);
   notifyVideoSubscribers();
   emitVideosUpdated();
 
-  // Dual remove from both Firebase RTDBs
+  // Dual-write trashed state to both Firebase RTDBs & Firestore
   try {
-    dualRtdbRemove(`videos/${id}`).catch(() => {});
+    dualRtdbSet(`videos/${id}`, trashedVideo).catch(() => {});
   } catch {}
 
-  fetch(`/api/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
-
-  // Dual delete from both Firestore databases
   try {
-    dualFirestoreDeleteDoc('videos', id).catch(() => {});
+    dualFirestoreSetDoc('videos', id, trashedVideo).catch(() => {});
   } catch {}
+
+  fetch(`/api/videos/${encodeURIComponent(id)}/trash`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deletedAt: now })
+  }).catch(() => {});
+}
+
+export const deleteVideo = trashVideo;
+
+/**
+ * Restores a video from Recycle Bin back to active status
+ */
+export async function restoreVideo(id: string): Promise<void> {
+  const local = getLocalVideos();
+  const existing = local.find((v) => v.id === id);
+  if (!existing) return;
+
+  const now = Date.now();
+  const restoredVideo: Video = {
+    ...existing,
+    status: 'active',
+    deletedAt: undefined,
+    updatedAt: now
+  };
+
+  const updated = local.map((v) => (v.id === id ? restoredVideo : v));
+  sharedVideos = updated;
+  saveLocalVideos(updated);
+  notifyVideoSubscribers();
+  emitVideosUpdated();
+
+  // Dual-write restored active state to both Firebase RTDBs & Firestore
+  try {
+    dualRtdbSet(`videos/${id}`, restoredVideo).catch(() => {});
+  } catch {}
+
+  try {
+    dualFirestoreSetDoc('videos', id, restoredVideo).catch(() => {});
+  } catch {}
+
+  fetch(`/api/videos/${encodeURIComponent(id)}/restore`, {
+    method: 'POST'
+  }).catch(() => {});
 }
 
 export async function bumpVideoCounter(

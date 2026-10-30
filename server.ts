@@ -428,12 +428,84 @@ async function startServer() {
     res.status(404).json({ success: false, error: 'Video not found' });
   });
 
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+  // Soft Delete / Recycle Bin & 30-day Immortality Protection
   app.delete('/api/videos/:id', (req, res) => {
     const { id } = req.params;
-    const videos = readVideos().filter((v: any) => v.id !== id);
+    const videos = readVideos();
+    const target = videos.find((v: any) => v.id === id);
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Video not found' });
+    }
+
+    const createdTime = target.createdAt || target.updatedAt || 0;
+    const ageMs = Date.now() - createdTime;
+
+    // Strict 30-day permanent lock rule
+    if (ageMs > THIRTY_DAYS_MS) {
+      return res.status(403).json({
+        success: false,
+        locked: true,
+        error: 'নিরাপত্তা সুরক্ষা: এই ভিডিওটি যোগ করার পর ৩০ দিন অতিক্রান্ত হয়েছে। এটি চিরস্থায়ী হয়ে গেছে এবং ফায়ারবেস/ডাটাবেজ থেকে ডিলিট করা নিষিদ্ধ।'
+      });
+    }
+
+    // Soft delete to Recycle Bin - physical Firebase data is preserved, never destroyed
+    target.status = 'trashed';
+    target.deletedAt = Date.now();
+    target.updatedAt = Date.now();
+
     writeVideos(videos);
-    deleteFromFirebase(id);
-    res.json({ success: true });
+    syncToFirebase(id, target);
+    res.json({ success: true, message: 'Moved to 30-day Recycle Bin', video: target });
+  });
+
+  app.post('/api/videos/:id/trash', (req, res) => {
+    const { id } = req.params;
+    const { deletedAt = Date.now() } = req.body || {};
+    const videos = readVideos();
+    const target = videos.find((v: any) => v.id === id);
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Video not found' });
+    }
+
+    const createdTime = target.createdAt || target.updatedAt || 0;
+    if (Date.now() - createdTime > THIRTY_DAYS_MS) {
+      return res.status(403).json({
+        success: false,
+        locked: true,
+        error: 'Permanent lock active: Video is older than 30 days.'
+      });
+    }
+
+    target.status = 'trashed';
+    target.deletedAt = deletedAt;
+    target.updatedAt = Date.now();
+
+    writeVideos(videos);
+    syncToFirebase(id, target);
+    res.json({ success: true, message: 'Video moved to Recycle Bin', video: target });
+  });
+
+  app.post('/api/videos/:id/restore', (req, res) => {
+    const { id } = req.params;
+    const videos = readVideos();
+    const target = videos.find((v: any) => v.id === id);
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Video not found' });
+    }
+
+    target.status = 'active';
+    delete target.deletedAt;
+    target.updatedAt = Date.now();
+
+    writeVideos(videos);
+    syncToFirebase(id, target);
+    res.json({ success: true, message: 'Video restored from Recycle Bin', video: target });
   });
 
   app.post('/api/videos/:id/bump', (req, res) => {

@@ -6,6 +6,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ExternalLinkIcon,
+  LockIcon,
   PencilIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -18,6 +19,7 @@ import {
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { deleteVideo, saveVideo, useVideos } from '../../hooks/useVideos';
 import { formatCount, timeAgo } from '../../utils/format';
+import { isPermanentlyLocked, getDaysUntilLock } from '../../utils/security';
 import type { Video } from '../../types';
 
 const PAGE_SIZE = 25;
@@ -27,6 +29,7 @@ export function Dashboard() {
   const location = useLocation();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deletingVideo, setDeletingVideo] = useState<Video | null>(null);
+  const [lockedVideo, setLockedVideo] = useState<Video | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Search and Filter states for high performance
@@ -34,16 +37,20 @@ export function Dashboard() {
   const [filter, setFilter] = useState<'all' | 'active' | 'disabled'>('all');
   const [page, setPage] = useState(1);
 
+  const trashedCount = useMemo(
+    () => videos.filter((v) => v.status === 'trashed').length,
+    [videos]
+  );
   const activeVideosCount = useMemo(
     () => videos.filter((v) => v.status === 'active').length,
     [videos]
   );
   const disabledVideosCount = useMemo(
-    () => videos.filter((v) => v.status !== 'active').length,
+    () => videos.filter((v) => v.status === 'disabled').length,
     [videos]
   );
   const totalViews = useMemo(
-    () => videos.reduce((sum, v) => sum + (v.views || 0), 0),
+    () => videos.filter((v) => v.status !== 'trashed').reduce((sum, v) => sum + (v.views || 0), 0),
     [videos]
   );
 
@@ -86,8 +93,10 @@ export function Dashboard() {
   const filteredVideos = useMemo(() => {
     const q = search.toLowerCase().trim();
     return videos.filter((v) => {
+      // Exclude soft-deleted / trashed videos from regular post history
+      if (v.status === 'trashed') return false;
       if (filter === 'active' && v.status !== 'active') return false;
-      if (filter === 'disabled' && v.status === 'active') return false;
+      if (filter === 'disabled' && v.status !== 'disabled') return false;
       if (q) {
         const titleMatch = v.title.toLowerCase().includes(q);
         const idMatch = v.id.toLowerCase().includes(q);
@@ -104,7 +113,7 @@ export function Dashboard() {
     return filteredVideos.slice(start, start + PAGE_SIZE);
   }, [filteredVideos, page]);
 
-  const onToggleStatus = async (id: string, status: 'active' | 'disabled') => {
+  const onToggleStatus = async (id: string, status: Video['status']) => {
     setBusyId(id);
     try {
       await saveVideo(id, { status: status === 'active' ? 'disabled' : 'active' });
@@ -120,10 +129,10 @@ export function Dashboard() {
     setBusyId(target.id);
     try {
       await deleteVideo(target.id);
-      showToast(`"${target.title}" was deleted.`);
+      showToast(`"${target.title}" সফলভাবে রিসাইকেল বিনে পাঠানো হয়েছে (৩০ দিন জমা থাকবে)।`);
       setDeletingVideo(null);
-    } catch {
-      showToast('Failed to delete video.');
+    } catch (err: any) {
+      showToast(err.message || 'ডিলিট করতে ব্যর্থ হয়েছে।');
     } finally {
       setBusyId(null);
     }
@@ -139,7 +148,7 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Move to Recycle Bin Confirmation Modal */}
       {deletingVideo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div
@@ -149,10 +158,10 @@ export function Dashboard() {
             className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-black/10 dark:bg-panel dark:ring-white/10"
           >
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-red-600">
-                <AlertTriangleIcon size={20} />
+              <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                <Trash2Icon size={20} />
                 <h2 id="delete-dialog-title" className="text-[16px] font-bold text-[#0f0f0f] dark:text-white">
-                  Delete Video?
+                  রিসাইকেল বিনে পাঠাবেন?
                 </h2>
               </div>
               <button
@@ -165,7 +174,7 @@ export function Dashboard() {
               </button>
             </div>
 
-            <div className="my-4 flex items-center gap-3 rounded-xl bg-black/5 p-3 dark:bg-white/5">
+            <div className="my-3 flex items-center gap-3 rounded-xl bg-black/5 p-3 dark:bg-white/5">
               {deletingVideo.thumbnailUrl ? (
                 <img
                   src={deletingVideo.thumbnailUrl}
@@ -185,6 +194,14 @@ export function Dashboard() {
               </div>
             </div>
 
+            <div className="mb-4 rounded-lg bg-amber-500/10 p-2.5 text-[11.5px] text-amber-800 dark:text-amber-300">
+              <p className="font-semibold flex items-center gap-1 mb-0.5">
+                <ShieldCheckIcon size={14} />
+                ডাটা সুরক্ষা নিশ্চয়তা:
+              </p>
+              ভিডিওটি ডাটাবেজ থেকে মুছে যাবে না। এটি <strong>৩০ দিন পর্যন্ত রিসাইকেল বিনে</strong> জমা থাকবে। আপনি যেকোনো সময় এটি পুনরায় চালু (Restore) করতে পারবেন।
+            </div>
+
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
@@ -192,16 +209,64 @@ export function Dashboard() {
                 disabled={busyId === deletingVideo.id}
                 className="rounded-lg bg-black/5 px-4 py-2 text-[13px] font-medium text-[#0f0f0f] hover:bg-black/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
               >
-                Cancel
+                বাতিল করুন
               </button>
               <button
                 type="button"
                 onClick={confirmDelete}
                 disabled={busyId === deletingVideo.id}
-                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-[13px] font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-[13px] font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
               >
                 <Trash2Icon size={15} />
-                {busyId === deletingVideo.id ? 'Deleting...' : 'Delete Video'}
+                {busyId === deletingVideo.id ? 'পাঠানো হচ্ছে...' : 'রিসাইকেল বিনে পাঠান'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 30-Day Permanent Immortality Lock Modal */}
+      {lockedVideo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-black/10 dark:bg-panel dark:ring-white/10"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                <LockIcon size={20} />
+                <h2 className="text-[16px] font-bold text-[#0f0f0f] dark:text-white">
+                  চিরস্থায়ী ডাটা লক (Protected)
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLockedVideo(null)}
+                aria-label="Close dialog"
+                className="grid h-8 w-8 place-items-center rounded-full text-[#606060] hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
+
+            <div className="my-4 rounded-xl bg-amber-500/10 p-3.5 border border-amber-500/20 text-[12.5px] leading-relaxed text-[#0f0f0f] dark:text-white/90">
+              <p className="font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5 mb-1">
+                <ShieldCheckIcon size={16} />
+                ৩০ দিনের স্থায়ী নিরাপত্তা নীতি সক্রিয়
+              </p>
+              <p className="text-[#606060] dark:text-white/70">
+                এই ভিডিওটি ইম্পোর্ট বা আপলোড করার পর <strong>৩০ দিন অতিক্রান্ত হয়েছে</strong>। সুরক্ষা নীতি অনুযায়ী ৩০ দিন পুরনো ডেটা চিরস্থায়ী হয়ে গেছে এবং ফায়ারবেস বা ডাটাবেজ থেকে কোনো অবস্থাতেই ডিলিট করা সম্ভব নয়।
+              </p>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setLockedVideo(null)}
+                className="rounded-lg bg-black/5 px-4 py-2 text-[13px] font-semibold text-[#0f0f0f] hover:bg-black/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+              >
+                ঠিক আছে, বুঝেছি
               </button>
             </div>
           </div>
@@ -312,6 +377,13 @@ export function Dashboard() {
             >
               Disabled ({disabledVideosCount})
             </button>
+            <Link
+              to="/erfan/trash"
+              className="rounded-md px-2.5 py-1.5 transition-colors text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-1 font-semibold"
+            >
+              <Trash2Icon size={12} />
+              <span>রিসাইকেল বিন ({trashedCount})</span>
+            </Link>
           </div>
 
           <Link
@@ -421,15 +493,28 @@ export function Dashboard() {
               >
                 {video.status === 'active' ? 'Disable' : 'Enable'}
               </button>
-              <button
-                type="button"
-                onClick={() => setDeletingVideo(video)}
-                disabled={busyId === video.id}
-                aria-label="Delete video"
-                className="grid h-8 w-8 place-items-center rounded-md text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/50"
-              >
-                <Trash2Icon size={15} />
-              </button>
+              {isPermanentlyLocked(video) ? (
+                <button
+                  type="button"
+                  onClick={() => setLockedVideo(video)}
+                  title="৩০ দিনের বেশি পুরনো হওয়ায় এটি স্থায়ীভাবে লক — ডাটাবেজ থেকে ডিলিট নিষিদ্ধ"
+                  className="flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-bold text-amber-700 hover:bg-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400"
+                >
+                  <LockIcon size={12} />
+                  <span>স্থায়ী</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setDeletingVideo(video)}
+                  disabled={busyId === video.id}
+                  title={`রিসাইকেল বিনে পাঠান (লক হতে আর ${getDaysUntilLock(video)} দিন বাকি)`}
+                  aria-label="Delete video"
+                  className="grid h-8 w-8 place-items-center rounded-md text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/50"
+                >
+                  <Trash2Icon size={15} />
+                </button>
+              )}
             </div>
           </div>
         ))}

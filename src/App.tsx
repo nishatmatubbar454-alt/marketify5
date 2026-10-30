@@ -23,6 +23,7 @@ import { AddVideo } from './pages/admin/AddVideo';
 import { AdsManagement } from './pages/admin/AdsManagement';
 import { Settings } from './pages/admin/Settings';
 import { DeviceAnalytics } from './pages/admin/DeviceAnalytics';
+import { RecycleBin } from './pages/admin/RecycleBin';
 
 function RequireRole({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -82,6 +83,14 @@ export function App() {
               element={
                 <RequireRole>
                   <Dashboard />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/erfan/trash"
+              element={
+                <RequireRole>
+                  <RecycleBin />
                 </RequireRole>
               }
             />

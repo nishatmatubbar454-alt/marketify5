@@ -15,6 +15,7 @@ export function AdminLayout({ title, children }: AdminLayoutProps) {
   const links = [
     { to: '/erfan/add', label: 'Post Add' },
     { to: '/erfan/dashboard', label: 'Post History' },
+    { to: '/erfan/trash', label: 'রিসাইকেল বিন (Trash)' },
     { to: '/erfan/analytics', label: 'App Installs' },
     { to: '/erfan/ads', label: 'Ads Management' },
     { to: '/erfan/settings', label: 'Settings' }

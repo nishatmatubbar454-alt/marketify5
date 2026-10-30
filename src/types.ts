@@ -1,4 +1,4 @@
-export type VideoStatus = 'active' | 'disabled';
+export type VideoStatus = 'active' | 'disabled' | 'trashed';
 
 export interface Video {
   id: string;
@@ -14,6 +14,7 @@ export interface Video {
   commentsCount: number;
   createdAt: number;
   updatedAt: number;
+  deletedAt?: number; // Timestamp when moved to Recycle Bin
 }
 
 export interface Comment {
