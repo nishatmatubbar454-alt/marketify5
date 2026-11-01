@@ -5,8 +5,20 @@ import { getStorage } from 'firebase/storage';
 import { getDatabase, ref as rtdbRef, set as rtdbSet, remove as rtdbRemove } from 'firebase/database';
 import { getAnalytics, isSupported, type Analytics } from 'firebase/analytics';
 
-// Firebase Project 1: Primary (himrw-fae65)
+// Firebase Project 1: Primary (maka-bfd59)
 export const PRIMARY_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCzIdArW-CMPtDomdsprqW39RG7QNHs1RM",
+  authDomain: "maka-bfd59.firebaseapp.com",
+  databaseURL: "https://maka-bfd59-default-rtdb.firebaseio.com",
+  projectId: "maka-bfd59",
+  storageBucket: "maka-bfd59.firebasestorage.app",
+  messagingSenderId: "1027339563782",
+  appId: "1:1027339563782:web:d6b6242fbb3fe65c3e2487",
+  measurementId: "G-F7YF8XDW04"
+};
+
+// Firebase Project 2: Secondary / Backup Load Balancer (himrw-fae65)
+export const SECONDARY_FIREBASE_CONFIG = {
   apiKey: "AIzaSyDaDfql5hzf8CCFAOVNX0c8xeyfsVJWYQg",
   authDomain: "himrw-fae65.firebaseapp.com",
   databaseURL: "https://himrw-fae65-default-rtdb.firebaseio.com",
@@ -15,17 +27,6 @@ export const PRIMARY_FIREBASE_CONFIG = {
   messagingSenderId: "697331272278",
   appId: "1:697331272278:web:fb1ed4bc02d4397a78c9f7",
   measurementId: "G-L5EF52FPXW"
-};
-
-// Firebase Project 2: Secondary / High-Traffic Load Balancer (markitify-6c51e)
-export const SECONDARY_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCaw_PmFlltYJHIiZEYWnt47ry1NxTZp9U",
-  authDomain: "markitify-6c51e.firebaseapp.com",
-  databaseURL: "https://markitify-6c51e-default-rtdb.firebaseio.com",
-  projectId: "markitify-6c51e",
-  storageBucket: "markitify-6c51e.firebasestorage.app",
-  messagingSenderId: "169887153511",
-  appId: "1:169887153511:web:0cc3f8b98ea2d2666c03c2"
 };
 
 function getFirebaseConfig() {
@@ -44,7 +45,7 @@ function getFirebaseConfig() {
 
 const activePrimaryConfig = getFirebaseConfig();
 
-// Initialize Primary Firebase (himrw-fae65)
+// Initialize Primary Firebase: maka-bfd59 (আজকে দেওয়া নতুন ফায়ারবেস)
 export const primaryApp =
   getApps().find((a) => a.name === '[DEFAULT]') || initializeApp(activePrimaryConfig);
 export const primaryDb = getFirestore(primaryApp);
@@ -52,7 +53,7 @@ export const primaryAuth = getAuth(primaryApp);
 export const primaryStorage = getStorage(primaryApp);
 export const primaryRealtimeDb = getDatabase(primaryApp);
 
-// Initialize Secondary Firebase (markitify-6c51e)
+// Initialize Secondary Firebase: himrw-fae65 (প্রজেক্টের শুরুতে থাকা ফায়ারবেস)
 export const secondaryApp =
   getApps().find((a) => a.name === 'secondaryApp') ||
   initializeApp(SECONDARY_FIREBASE_CONFIG, 'secondaryApp');
@@ -91,8 +92,8 @@ if (typeof window !== 'undefined' && activePrimaryConfig.measurementId) {
 // ==========================================
 
 export const RTDB_ENDPOINTS = [
-  'https://himrw-fae65-default-rtdb.firebaseio.com',
-  'https://markitify-6c51e-default-rtdb.firebaseio.com'
+  'https://maka-bfd59-default-rtdb.firebaseio.com',
+  'https://himrw-fae65-default-rtdb.firebaseio.com'
 ];
 
 let roundRobinCounter = Math.floor(Math.random() * 2);
@@ -110,7 +111,7 @@ export function getBalancedEndpoints(path: string = ''): [string, string] {
 
 /**
  * Load-balanced HTTP REST fetch across both Firebase projects with instant failover.
- * Distributes 50% traffic to himrw-fae65 and 50% to markitify-6c51e.
+ * Distributes 50% traffic to himrw-fae65 and 50% to maka-bfd59.
  */
 export async function loadBalancedFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const [url1, url2] = getBalancedEndpoints(path);

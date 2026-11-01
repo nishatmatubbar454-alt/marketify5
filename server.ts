@@ -5,7 +5,8 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 
-const PORT = 3000;
+const portArgIdx = process.argv.indexOf('--port');
+const PORT = portArgIdx !== -1 && process.argv[portArgIdx + 1] ? Number(process.argv[portArgIdx + 1]) : 3000;
 const DATA_DIR = path.join(process.cwd(), 'data');
 const VIDEOS_FILE = path.join(DATA_DIR, 'videos.json');
 const ADS_FILE = path.join(DATA_DIR, 'ads.json');
@@ -152,8 +153,8 @@ function writeAds(ads: any[]) {
 }
 
 const RTDB_ENDPOINTS = [
-  'https://himrw-fae65-default-rtdb.firebaseio.com',
-  'https://markitify-6c51e-default-rtdb.firebaseio.com'
+  'https://maka-bfd59-default-rtdb.firebaseio.com',
+  'https://himrw-fae65-default-rtdb.firebaseio.com'
 ];
 
 let serverReadCounter = 0;
@@ -610,8 +611,8 @@ async function startServer() {
     res.json({
       success: true,
       activeProjects: [
-        { id: 'himrw-fae65', role: 'Primary & Realtime DB', url: RTDB_ENDPOINTS[0] },
-        { id: 'markitify-6c51e', role: 'Secondary Load Balancer & Backup', url: RTDB_ENDPOINTS[1] }
+        { id: 'maka-bfd59', role: 'Primary & Realtime DB', url: RTDB_ENDPOINTS[0] },
+        { id: 'himrw-fae65', role: 'Secondary Load Balancer & Backup', url: RTDB_ENDPOINTS[1] }
       ],
       loadBalancing: '50/50 Round-Robin & Instant Failover',
       replication: 'Active-Active Dual Write'
@@ -812,11 +813,13 @@ async function startServer() {
     writeAnalytics(data);
 
     try {
-      fetch('https://himrw-fae65-default-rtdb.firebaseio.com/analytics/appInstalls.json', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data.appInstalls)
-      }).catch(() => {});
+      RTDB_ENDPOINTS.forEach((endpoint) => {
+        fetch(`${endpoint}/analytics/appInstalls.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data.appInstalls)
+        }).catch(() => {});
+      });
     } catch {}
 
     res.json({ success: true, count: data.appInstalls });

@@ -127,7 +127,7 @@ function initSharedVideosListener() {
     })
     .catch(() => {});
 
-  // Load videos with 50/50 load balancing across himrw-fae65 and markitify-6c51e
+  // Load videos with 50/50 load balancing across himrw-fae65 and maka-bfd59
   const loadVideosFromFirebase = async (): Promise<boolean> => {
     // 1. Dual-balanced direct REST fetch (fastest, zero SDK overhead, instant failover)
     try {

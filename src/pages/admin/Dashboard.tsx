@@ -67,7 +67,7 @@ export function Dashboard() {
       const res = await fetch('/api/admin/dual-sync', { method: 'POST' });
       const data = await res.json();
       if (data && data.success) {
-        showToast('উভয় ফায়ারবেস (himrw-fae65 + markitify-6c51e) সফলভাবে সিঙ্ক হয়েছে!');
+        showToast('উভয় ফায়ারবেস (himrw-fae65 + maka-bfd59) সফলভাবে সিঙ্ক হয়েছে!');
       } else {
         showToast('ফায়ারবেস সিঙ্কে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।');
       }
@@ -294,7 +294,7 @@ export function Dashboard() {
                 </span>
               </div>
               <p className="mt-0.5 text-[11px] text-[#606060] dark:text-white/60">
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">Primary:</span> himrw-fae65 (RTDB + Firestore) ⇄ <span className="font-semibold text-teal-600 dark:text-teal-400">Secondary:</span> markitify-6c51e (RTDB + Backup) • স্বয়ংক্রিয় লোড ব্যালেন্সিং ও ফেইলওভার সক্রিয়
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">Primary:</span> maka-bfd59 (RTDB + Firestore) ⇄ <span className="font-semibold text-teal-600 dark:text-teal-400">Secondary:</span> himrw-fae65 (RTDB + Backup) • স্বয়ংক্রিয় লোড ব্যালেন্সিং ও ফেইলওভার সক্রিয়
               </p>
             </div>
           </div>

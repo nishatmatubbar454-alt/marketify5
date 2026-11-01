@@ -6,14 +6,14 @@ import { getContactLink, getTelegramLink, setContactLink, setTelegramLink } from
 import { useDownloadDirectLink, setDownloadDirectLink, DEFAULT_DOWNLOAD_LINK } from '../../utils/downloadLink';
 
 const DEFAULT_FIREBASE_CONFIG_STR = JSON.stringify({
-  apiKey: "AIzaSyDaDfql5hzf8CCFAOVNX0c8xeyfsVJWYQg",
-  authDomain: "himrw-fae65.firebaseapp.com",
-  databaseURL: "https://himrw-fae65-default-rtdb.firebaseio.com",
-  projectId: "himrw-fae65",
-  storageBucket: "himrw-fae65.firebasestorage.app",
-  messagingSenderId: "697331272278",
-  appId: "1:697331272278:web:fb1ed4bc02d4397a78c9f7",
-  measurementId: "G-L5EF52FPXW"
+  apiKey: "AIzaSyCzIdArW-CMPtDomdsprqW39RG7QNHs1RM",
+  authDomain: "maka-bfd59.firebaseapp.com",
+  databaseURL: "https://maka-bfd59-default-rtdb.firebaseio.com",
+  projectId: "maka-bfd59",
+  storageBucket: "maka-bfd59.firebasestorage.app",
+  messagingSenderId: "1027339563782",
+  appId: "1:1027339563782:web:d6b6242fbb3fe65c3e2487",
+  measurementId: "G-F7YF8XDW04"
 }, null, 2);
 
 export function Settings() {

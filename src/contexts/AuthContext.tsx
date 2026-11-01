@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { loadBalancedFetch, RTDB_ENDPOINTS } from '../lib/firebase';
 import type { Session } from '../types';
 
 const TOKEN_KEY = 'mk-session-token';
@@ -34,9 +35,9 @@ async function derivePBKDF2Hash(password: string, salt: string): Promise<string>
 }
 
 async function getStoredAuthConfig(): Promise<{ salt: string; hash: string }> {
-  // 1. Try Firebase RTDB
+  // 1. Try Dual Firebase RTDB
   try {
-    const res = await fetch('https://himrw-fae65-default-rtdb.firebaseio.com/admin/auth.json');
+    const res = await loadBalancedFetch('/admin/auth.json');
     if (res.ok) {
       const data = await res.json();
       if (data && data.salt && data.hash) {
@@ -72,13 +73,16 @@ async function updateAdminPasswordPBKDF2(newPassword: string): Promise<void> {
     localStorage.setItem(LOCAL_AUTH_HASH_KEY, JSON.stringify(cred));
   } catch {}
 
-  try {
-    await fetch('https://himrw-fae65-default-rtdb.firebaseio.com/admin/auth.json', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cred)
-    });
-  } catch {}
+  // Dual write to both Firebase RTDBs
+  await Promise.allSettled(
+    RTDB_ENDPOINTS.map((endpoint) =>
+      fetch(`${endpoint}/admin/auth.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cred)
+      }).catch(() => {})
+    )
+  );
 }
 
 interface AuthValue {

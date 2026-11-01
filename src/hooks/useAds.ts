@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
-import { ref as rtdbRef, get as rtdbGet, set as rtdbSet, remove as rtdbRemove } from 'firebase/database';
-import { db, realtimeDb } from '../lib/firebase';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { ref as rtdbRef, get as rtdbGet } from 'firebase/database';
+import {
+  primaryDb,
+  primaryRealtimeDb,
+  loadBalancedFetch,
+  dualRtdbSet,
+  dualRtdbRemove,
+  dualFirestoreSetDoc,
+  dualFirestoreDeleteDoc
+} from '../lib/firebase';
 import { DEFAULT_ADS } from '../data/defaultAds';
 import type { Ad } from '../types';
 
@@ -64,7 +72,7 @@ function initSharedAdsListener() {
 
   const loadAdsFromFirebase = async () => {
     try {
-      const res = await fetch('https://himrw-fae65-default-rtdb.firebaseio.com/ads.json');
+      const res = await loadBalancedFetch('/ads.json');
       if (res.ok) {
         const val = await res.json();
         if (val && typeof val === 'object') {
@@ -85,7 +93,7 @@ function initSharedAdsListener() {
     } catch {}
 
     try {
-      const snap = await rtdbGet(rtdbRef(realtimeDb, 'ads'));
+      const snap = await rtdbGet(rtdbRef(primaryRealtimeDb, 'ads'));
       const val = snap.val();
       if (val) {
         let remote: Ad[] = [];
@@ -161,10 +169,9 @@ export async function saveAd(ad: Ad) {
     window.dispatchEvent(new CustomEvent(ADS_EVENT));
   }
 
-  // Realtime Database save
+  // Dual Realtime Database save
   try {
-    const adRef = rtdbRef(realtimeDb, `ads/${ad.id}`);
-    rtdbSet(adRef, updatedAd).catch(() => {});
+    dualRtdbSet(`ads/${ad.id}`, updatedAd).catch(() => {});
   } catch {}
 
   // Server API save
@@ -174,10 +181,10 @@ export async function saveAd(ad: Ad) {
     body: JSON.stringify(updatedAd)
   }).catch(() => {});
 
-  // Firestore save
+  // Dual Firestore save
   try {
     const { id, ...rest } = updatedAd;
-    setDoc(doc(db, 'ads', id), { ...rest, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+    dualFirestoreSetDoc('ads', id, { ...rest, updatedAt: Date.now() }, { merge: true }).catch(() => {});
   } catch {}
 }
 
@@ -192,13 +199,12 @@ export async function removeAd(id: string) {
   }
 
   try {
-    const adRef = rtdbRef(realtimeDb, `ads/${id}`);
-    rtdbRemove(adRef).catch(() => {});
+    dualRtdbRemove(`ads/${id}`).catch(() => {});
   } catch {}
 
   fetch(`/api/ads/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
 
   try {
-    deleteDoc(doc(db, 'ads', id)).catch(() => {});
+    dualFirestoreDeleteDoc('ads', id).catch(() => {});
   } catch {}
 }
