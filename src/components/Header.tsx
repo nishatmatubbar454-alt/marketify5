@@ -355,12 +355,11 @@ export function Header() {
 
               {/* In-App Download / Install Button right inside the menu drawer */}
               <div className="pt-2 pb-1 px-1">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const ok = await triggerInstall();
-                    if (ok) setMenuOpen(false);
-                  }}
+                <a
+                  href="https://marketify.apk5y.workers.dev/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMenuOpen(false)}
                   className="flex w-full items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-[#ff7a18] via-[#ea580c] to-[#c2410c] px-3.5 py-3 text-white shadow-md hover:brightness-110 active:scale-[0.98] transition-all"
                 >
                   <div className="flex items-center gap-2.5">
@@ -375,7 +374,7 @@ export function Header() {
                   <span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-white">
                     INSTALL
                   </span>
-                </button>
+                </a>
               </div>
             </div>
 

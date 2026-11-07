@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Download } from 'lucide-react';
 import { Header } from '../components/Header';
 import { BannerAd } from '../components/BannerAd';
 import { VideoCard } from '../components/VideoCard';
@@ -181,6 +182,18 @@ export function Home() {
           pageSize={PAGE_SIZE}
         />
       </main>
+
+      {/* Compact Floating App Download Button (Homepage Only) */}
+      <a
+        href="https://marketify.apk5y.workers.dev/"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="অ্যাপ ডাউনলোড করুন"
+        className="fixed bottom-[108px] sm:bottom-28 right-3 sm:right-5 z-40 flex items-center gap-1 rounded-full bg-gradient-to-r from-[#ff7a18] via-[#ea580c] to-[#c2410c] px-2.5 py-1 text-[10px] font-bold text-white shadow-[0_4px_14px_rgba(234,88,12,0.45)] ring-1 ring-white/25 hover:brightness-110 active:scale-95 transition-all"
+      >
+        <Download size={11} className="stroke-[2.5] shrink-0" />
+        <span>app</span>
+      </a>
     </div>
   );
 }

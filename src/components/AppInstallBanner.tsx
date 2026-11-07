@@ -144,14 +144,16 @@ export function AppInstallBanner() {
           </div>
 
           {/* Action / Install Button */}
-          <button
-            type="button"
-            onClick={handleInstallClick}
+          <a
+            href="https://marketify.apk5y.workers.dev/"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => recordAppInstall(isIOS ? 'iOS' : 'Android')}
             className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#ff7a18] to-[#ea580c] px-3.5 sm:px-4 py-2 text-[12px] sm:text-[13px] font-bold text-white shadow-md hover:brightness-110 active:scale-95 transition-all shrink-0"
           >
             <Download size={14} className="stroke-[2.5]" />
             <span>ইনস্টল করুন</span>
-          </button>
+          </a>
         </div>
       </aside>
 

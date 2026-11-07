@@ -4,14 +4,13 @@
  */
 
 import React from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AppLockProvider } from './contexts/AppLockContext';
 import { AppLockScreen } from './components/lock/AppLockScreen';
 import { SocialBarAds } from './components/SocialBarAds';
 import { BottomNav } from './components/BottomNav';
-import { AppInstallBanner } from './components/AppInstallBanner';
 import { Home } from './pages/Home';
 import { VideoPage } from './pages/VideoPage';
 import { TrendingPage } from './pages/TrendingPage';
@@ -43,12 +42,6 @@ function AdminEntry() {
   return <Login />;
 }
 
-function PublicHeaderBanner() {
-  const location = useLocation();
-  if (location.pathname.startsWith('/erfan')) return null;
-  return <AppInstallBanner />;
-}
-
 import { trackDevicePresence, recordAppInstall } from './utils/analytics';
 
 export function App() {
@@ -69,7 +62,6 @@ export function App() {
         <AppLockProvider>
           <AppLockScreen />
           <BrowserRouter>
-          <PublicHeaderBanner />
           <SocialBarAds />
           <Routes>
             <Route path="/" element={<Home />} />
