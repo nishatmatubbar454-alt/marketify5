@@ -16,7 +16,7 @@ export function Login() {
     setBusy(true);
     setError('');
     try {
-      await login(password);
+      await login(password.trim());
       navigate('/erfan/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed.');
