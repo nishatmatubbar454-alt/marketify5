@@ -313,9 +313,13 @@ export async function saveVideo(
     dualRtdbSet(`videos/${targetId}`, videoData).catch(() => {});
   } catch {}
 
+  const adminToken = typeof window !== 'undefined' ? localStorage.getItem('mk-session-token') : null;
   fetch('/api/videos', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {})
+    },
     body: JSON.stringify(videoData)
   }).catch(() => {});
 
@@ -363,9 +367,13 @@ export async function trashVideo(id: string): Promise<void> {
     dualFirestoreSetDoc('videos', id, trashedVideo).catch(() => {});
   } catch {}
 
+  const adminToken = typeof window !== 'undefined' ? localStorage.getItem('mk-session-token') : null;
   fetch(`/api/videos/${encodeURIComponent(id)}/trash`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {})
+    },
     body: JSON.stringify({ deletedAt: now })
   }).catch(() => {});
 }
@@ -403,8 +411,12 @@ export async function restoreVideo(id: string): Promise<void> {
     dualFirestoreSetDoc('videos', id, restoredVideo).catch(() => {});
   } catch {}
 
+  const adminToken = typeof window !== 'undefined' ? localStorage.getItem('mk-session-token') : null;
   fetch(`/api/videos/${encodeURIComponent(id)}/restore`, {
-    method: 'POST'
+    method: 'POST',
+    headers: {
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {})
+    }
   }).catch(() => {});
 }
 

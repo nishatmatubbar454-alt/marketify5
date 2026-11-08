@@ -175,9 +175,13 @@ export async function saveAd(ad: Ad) {
   } catch {}
 
   // Server API save
+  const adminToken = typeof window !== 'undefined' ? localStorage.getItem('mk-session-token') : null;
   fetch('/api/ads', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {})
+    },
     body: JSON.stringify(updatedAd)
   }).catch(() => {});
 
@@ -202,7 +206,13 @@ export async function removeAd(id: string) {
     dualRtdbRemove(`ads/${id}`).catch(() => {});
   } catch {}
 
-  fetch(`/api/ads/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+  const adminToken = typeof window !== 'undefined' ? localStorage.getItem('mk-session-token') : null;
+  fetch(`/api/ads/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: {
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {})
+    }
+  }).catch(() => {});
 
   try {
     dualFirestoreDeleteDoc('ads', id).catch(() => {});

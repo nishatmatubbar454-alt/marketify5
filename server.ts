@@ -350,276 +350,42 @@ async function startServer() {
   }) as any);
   app.use(express.json({ limit: '10mb' }));
 
-  // --- API Routes with ETag and Gzip Level 9 for minimal data usage ---
-  app.get('/api/videos', (req, res) => {
-    const videos = readVideos();
-    const lastModified = videos.length > 0 ? (videos[0].updatedAt || videos[0].createdAt || 0) : 0;
-    const etag = `W/"vid-${videos.length}-${lastModified}"`;
-
-    if (req.headers['if-none-match'] === etag) {
-      return res.status(304).end();
-    }
-
-    res.setHeader('ETag', etag);
-    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=180');
-    res.json({ success: true, videos });
+  // --- Security Headers Middleware ---
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
   });
 
-  app.get('/api/ads', (req, res) => {
-    const ads = readAds();
-    const lastModified = ads.length > 0 ? (ads[0].updatedAt || 0) : 0;
-    const etag = `W/"ads-${ads.length}-${lastModified}"`;
-
-    if (req.headers['if-none-match'] === etag) {
-      return res.status(304).end();
-    }
-
-    res.setHeader('ETag', etag);
-    res.setHeader('Cache-Control', 'public, max-age=120, stale-while-revalidate=300');
-    res.json({ success: true, ads });
-  });
-
-  app.post('/api/videos', (req, res) => {
-    const payload = req.body;
-    const hasEmbed = payload && typeof payload.embedUrl === 'string' && payload.embedUrl.trim().length > 0;
-    const hasWebsite = payload && typeof payload.websiteUrl === 'string' && payload.websiteUrl.trim().length > 0;
-    if (!payload || (!hasEmbed && !hasWebsite)) {
-      return res.status(400).json({ error: 'embedUrl or websiteUrl is required' });
-    }
-
-    const videos = readVideos();
+  // --- API Rate Limiter (Protects against DDoS, Brute Force & Scraping) ---
+  const ipRequestCounts = new Map<string, { count: number; resetAt: number }>();
+  app.use('/api', (req, res, next) => {
+    const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
-    const id = payload.id || `vid_${now}_${Math.random().toString(36).substring(2, 7)}`;
-    const existingIdx = videos.findIndex((v: any) => v.id === id);
-
-    const videoObj = {
-      id,
-      thumbnailUrl: payload.thumbnailUrl || '',
-      embedUrl: payload.embedUrl || '',
-      websiteUrl: payload.websiteUrl || '',
-      title: payload.title || 'Untitled video',
-      sourceName: payload.sourceName || 'Marketify',
-      duration: payload.duration || '',
-      status: payload.status || 'active',
-      views: payload.views ?? (existingIdx >= 0 ? videos[existingIdx].views : 0),
-      likes: payload.likes ?? (existingIdx >= 0 ? videos[existingIdx].likes : 0),
-      commentsCount: 0,
-      createdAt: payload.createdAt || (existingIdx >= 0 ? videos[existingIdx].createdAt : now),
-      updatedAt: now
-    };
-
-    if (existingIdx >= 0) {
-      videos[existingIdx] = { ...videos[existingIdx], ...videoObj };
-    } else {
-      videos.unshift(videoObj);
+    const entry = ipRequestCounts.get(rawIp) || { count: 0, resetAt: now + 60000 };
+    if (now > entry.resetAt) {
+      entry.count = 0;
+      entry.resetAt = now + 60000;
     }
-
-    writeVideos(videos);
-    syncToFirebase(id, videoObj);
-    res.json({ success: true, video: videoObj, id });
+    entry.count++;
+    ipRequestCounts.set(rawIp, entry);
+    if (entry.count > 300) {
+      return res.status(429).json({ success: false, error: 'Too many requests. Please slow down.' });
+    }
+    next();
   });
 
-  app.get('/api/videos/:id', (req, res) => {
-    const { id } = req.params;
-    const videos = readVideos();
-    const found = videos.find((v: any) => v.id === id);
-    if (found) {
-      return res.json({ success: true, video: found });
+  // Periodic rate limiter memory cleanup
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of ipRequestCounts.entries()) {
+      if (now > v.resetAt) ipRequestCounts.delete(k);
     }
-    res.status(404).json({ success: false, error: 'Video not found' });
-  });
+  }, 120000);
 
-  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
-  // Soft Delete / Recycle Bin & 30-day Immortality Protection
-  app.delete('/api/videos/:id', (req, res) => {
-    const { id } = req.params;
-    const videos = readVideos();
-    const target = videos.find((v: any) => v.id === id);
-
-    if (!target) {
-      return res.status(404).json({ success: false, error: 'Video not found' });
-    }
-
-    const createdTime = target.createdAt || target.updatedAt || 0;
-    const ageMs = Date.now() - createdTime;
-
-    // Strict 30-day permanent lock rule
-    if (ageMs > THIRTY_DAYS_MS) {
-      return res.status(403).json({
-        success: false,
-        locked: true,
-        error: 'নিরাপত্তা সুরক্ষা: এই ভিডিওটি যোগ করার পর ৩০ দিন অতিক্রান্ত হয়েছে। এটি চিরস্থায়ী হয়ে গেছে এবং ফায়ারবেস/ডাটাবেজ থেকে ডিলিট করা নিষিদ্ধ।'
-      });
-    }
-
-    // Soft delete to Recycle Bin - physical Firebase data is preserved, never destroyed
-    target.status = 'trashed';
-    target.deletedAt = Date.now();
-    target.updatedAt = Date.now();
-
-    writeVideos(videos);
-    syncToFirebase(id, target);
-    res.json({ success: true, message: 'Moved to 30-day Recycle Bin', video: target });
-  });
-
-  app.post('/api/videos/:id/trash', (req, res) => {
-    const { id } = req.params;
-    const { deletedAt = Date.now() } = req.body || {};
-    const videos = readVideos();
-    const target = videos.find((v: any) => v.id === id);
-
-    if (!target) {
-      return res.status(404).json({ success: false, error: 'Video not found' });
-    }
-
-    const createdTime = target.createdAt || target.updatedAt || 0;
-    if (Date.now() - createdTime > THIRTY_DAYS_MS) {
-      return res.status(403).json({
-        success: false,
-        locked: true,
-        error: 'Permanent lock active: Video is older than 30 days.'
-      });
-    }
-
-    target.status = 'trashed';
-    target.deletedAt = deletedAt;
-    target.updatedAt = Date.now();
-
-    writeVideos(videos);
-    syncToFirebase(id, target);
-    res.json({ success: true, message: 'Video moved to Recycle Bin', video: target });
-  });
-
-  app.post('/api/videos/:id/restore', (req, res) => {
-    const { id } = req.params;
-    const videos = readVideos();
-    const target = videos.find((v: any) => v.id === id);
-
-    if (!target) {
-      return res.status(404).json({ success: false, error: 'Video not found' });
-    }
-
-    target.status = 'active';
-    delete target.deletedAt;
-    target.updatedAt = Date.now();
-
-    writeVideos(videos);
-    syncToFirebase(id, target);
-    res.json({ success: true, message: 'Video restored from Recycle Bin', video: target });
-  });
-
-  app.post('/api/videos/:id/bump', (req, res) => {
-    const { id } = req.params;
-    const { field, by = 1 } = req.body;
-    const videos = readVideos();
-    const idx = videos.findIndex((v: any) => v.id === id);
-    if (idx >= 0 && (field === 'views' || field === 'likes' || field === 'commentsCount')) {
-      videos[idx][field] = Math.max(0, (videos[idx][field] || 0) + by);
-      videos[idx].updatedAt = Date.now();
-      writeVideos(videos);
-      syncToFirebase(id, videos[idx]);
-      return res.json({ success: true, count: videos[idx][field] });
-    }
-    return res.status(404).json({ success: false, error: 'Video not found' });
-  });
-
-  app.get('/api/ads', (req, res) => {
-    const ads = readAds();
-    res.json({ success: true, ads });
-
-    // Background sync
-    syncAdsFromFirebase().catch(() => {});
-  });
-
-  app.post('/api/ads', (req, res) => {
-    const ad = req.body;
-    if (!ad || !ad.id) {
-      return res.status(400).json({ error: 'Ad with id is required' });
-    }
-
-    const ads = readAds();
-    const idx = ads.findIndex((a: any) => a.id === ad.id);
-    const updatedAd = { ...ad, updatedAt: Date.now() };
-
-    if (idx >= 0) {
-      ads[idx] = { ...ads[idx], ...updatedAd };
-    } else {
-      ads.push(updatedAd);
-    }
-
-    writeAds(ads);
-    syncAdToFirebase(ad.id, updatedAd);
-    res.json({ success: true, ad: updatedAd });
-  });
-
-  app.delete('/api/ads/:id', (req, res) => {
-    const { id } = req.params;
-    const ads = readAds().filter((a: any) => a.id !== id);
-    writeAds(ads);
-    deleteAdFromFirebase(id);
-    res.json({ success: true });
-  });
-
-  // --- Dual Firebase Sync & Status API ---
-  app.post('/api/admin/dual-sync', async (_req, res) => {
-    try {
-      const videos = readVideos();
-      const ads = readAds();
-
-      // Ensure both Firebase instances receive the complete video & ads state
-      const videoMap: Record<string, any> = {};
-      videos.forEach((v: any) => {
-        if (v && v.id) videoMap[v.id] = v;
-      });
-
-      const adsMap: Record<string, any> = {};
-      ads.forEach((a: any) => {
-        if (a && a.id) adsMap[a.id] = a;
-      });
-
-      const results = await Promise.allSettled(
-        RTDB_ENDPOINTS.map(async (endpoint) => {
-          const vRes = await fetch(`${endpoint}/videos.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(videoMap)
-          });
-          const aRes = await fetch(`${endpoint}/ads.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(adsMap)
-          });
-          return { endpoint, videosOk: vRes.ok, adsOk: aRes.ok };
-        })
-      );
-
-      res.json({
-        success: true,
-        message: 'Dual Firebase synchronization completed successfully',
-        syncedVideos: videos.length,
-        syncedAds: ads.length,
-        endpoints: RTDB_ENDPOINTS,
-        results
-      });
-    } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.get('/api/admin/dual-status', (_req, res) => {
-    res.json({
-      success: true,
-      activeProjects: [
-        { id: 'maka-bfd59', role: 'Primary & Realtime DB', url: RTDB_ENDPOINTS[0] },
-        { id: 'himrw-fae65', role: 'Secondary Load Balancer & Backup', url: RTDB_ENDPOINTS[1] }
-      ],
-      loadBalancing: '50/50 Round-Robin & Instant Failover',
-      replication: 'Active-Active Dual Write'
-    });
-  });
-
-  // --- Admin Security & Cryptographic Auth ---
+  // --- Admin Security & Cryptographic Auth State ---
   const readAuthConfig = () => {
     try {
       if (fs.existsSync(AUTH_FILE)) {
@@ -656,6 +422,7 @@ async function startServer() {
 
   const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
+  // Timing-safe password verification
   const verifyPassHash = (password: string): boolean => {
     const authConfig = readAuthConfig();
     const computedHash = crypto
@@ -667,10 +434,126 @@ async function startServer() {
     return crypto.timingSafeEqual(storedBuf, computedBuf);
   };
 
-  app.post('/api/auth/login', (req, res) => {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  // Strict Admin Authorization Middleware
+  function requireAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim() || (req.headers['x-admin-token'] as string);
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: 'প্রবেশাধিকার সংরক্ষিত: এডমিন প্রমাণীকরণ আবশ্যক (Unauthorized access. Valid admin token required).'
+      });
+    }
+    const sessions = readSessions();
+    const session = sessions[token];
+    if (!session || session.role !== 'admin' || session.expiresAt <= Date.now()) {
+      return res.status(401).json({
+        success: false,
+        error: 'সেশন মেয়াদোত্তীর্ণ বা অবৈধ। দয়া করে পুনরায় লগইন করুন।'
+      });
+    }
+    (req as any).adminSession = session;
+    next();
+  }
+
+  // Safe URL scheme verification (guards against XSS pseudo-protocols)
+  function isSafeUrl(url: any): boolean {
+    if (typeof url !== 'string') return false;
+    const trimmed = url.trim();
+    if (!trimmed) return false;
+    if (/^(javascript:|data:|vbscript:)/i.test(trimmed)) return false;
+    return /^https?:\/\//i.test(trimmed) || /<iframe/i.test(trimmed) || /^\/\//i.test(trimmed);
+  }
+
+  // --- Public Read APIs ---
+  app.get('/api/videos', (req, res) => {
+    const videos = readVideos();
+    const lastModified = videos.length > 0 ? (videos[0].updatedAt || videos[0].createdAt || 0) : 0;
+    const etag = `W/"vid-${videos.length}-${lastModified}"`;
+
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=180');
+    res.json({ success: true, videos });
+  });
+
+  app.get('/api/videos/:id', (req, res) => {
+    const { id } = req.params;
+    const videos = readVideos();
+    const found = videos.find((v: any) => v.id === id);
+    if (found) {
+      return res.json({ success: true, video: found });
+    }
+    res.status(404).json({ success: false, error: 'Video not found' });
+  });
+
+  app.get('/api/ads', (req, res) => {
+    const ads = readAds();
+    const lastModified = ads.length > 0 ? (ads[0].updatedAt || 0) : 0;
+    const etag = `W/"ads-${ads.length}-${lastModified}"`;
+
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'public, max-age=120, stale-while-revalidate=300');
+    res.json({ success: true, ads });
+  });
+
+  app.get('/api/admin/dual-status', (_req, res) => {
+    res.json({
+      success: true,
+      activeProjects: [
+        { id: 'maka-bfd59', role: 'Primary & Realtime DB', url: RTDB_ENDPOINTS[0] },
+        { id: 'himrw-fae65', role: 'Secondary Load Balancer & Backup', url: RTDB_ENDPOINTS[1] }
+      ],
+      loadBalancing: '50/50 Round-Robin & Instant Failover',
+      replication: 'Active-Active Dual Write'
+    });
+  });
+
+  // --- Controlled Public Views / Likes Bump (Rate-Limited & Validated) ---
+  const bumpRateMap = new Map<string, { count: number; resetAt: number }>();
+  app.post('/api/videos/:id/bump', (req, res) => {
+    const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
-    const attempt = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
+    const bEntry = bumpRateMap.get(rawIp) || { count: 0, resetAt: now + 60000 };
+    if (now > bEntry.resetAt) {
+      bEntry.count = 0;
+      bEntry.resetAt = now + 60000;
+    }
+    bEntry.count++;
+    bumpRateMap.set(rawIp, bEntry);
+    if (bEntry.count > 60) {
+      return res.status(429).json({ success: false, error: 'Rate limit exceeded for views/likes' });
+    }
+
+    const { id } = req.params;
+    let { field, by = 1 } = req.body || {};
+    by = Number(by);
+    if (isNaN(by) || by < 1 || by > 5) by = 1;
+
+    const videos = readVideos();
+    const idx = videos.findIndex((v: any) => v.id === id);
+    if (idx >= 0 && (field === 'views' || field === 'likes' || field === 'commentsCount')) {
+      videos[idx][field] = Math.max(0, (videos[idx][field] || 0) + by);
+      videos[idx].updatedAt = Date.now();
+      writeVideos(videos);
+      syncToFirebase(id, videos[idx]);
+      return res.json({ success: true, count: videos[idx][field] });
+    }
+    return res.status(404).json({ success: false, error: 'Video not found' });
+  });
+
+  // --- Admin Authentication Endpoints ---
+  app.post('/api/auth/login', (req, res) => {
+    const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    const attempt = loginAttempts.get(rawIp) || { count: 0, lockedUntil: 0 };
 
     if (attempt.lockedUntil > now) {
       const remainingMinutes = Math.ceil((attempt.lockedUntil - now) / 60000);
@@ -692,13 +575,13 @@ async function startServer() {
         attempt.lockedUntil = now + 15 * 60 * 1000;
         attempt.count = 0;
       }
-      loginAttempts.set(ip, attempt);
+      loginAttempts.set(rawIp, attempt);
       return setTimeout(() => {
         res.status(401).json({ success: false, error: 'ভুল পাসওয়ার্ড! অ্যাক্সেস প্রত্যাখ্যাত।' });
       }, 350);
     }
 
-    loginAttempts.delete(ip);
+    loginAttempts.delete(rawIp);
 
     const token = crypto.randomBytes(32).toString('hex');
     const sessions = readSessions();
@@ -745,15 +628,9 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.post('/api/auth/change-password', (req, res) => {
+  app.post('/api/auth/change-password', requireAdminAuth, (req, res) => {
     const authHeader = req.headers.authorization || '';
-    const token = authHeader.replace(/^Bearer\s+/i, '') || req.body?.token;
-    const sessions = readSessions();
-    const session = sessions[token];
-    if (!session || session.expiresAt <= Date.now()) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
-    }
-
+    const currentToken = authHeader.replace(/^Bearer\s+/i, '').trim();
     const { currentPassword, newPassword } = req.body || {};
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ success: false, error: 'Current and new passwords are required' });
@@ -781,13 +658,222 @@ async function startServer() {
     };
     fs.writeFileSync(AUTH_FILE, JSON.stringify(updatedConfig, null, 2), 'utf-8');
 
+    // Invalidate all other sessions for security; keep only current token
+    const sessions = readSessions();
     const updatedSessions: Record<string, any> = {};
-    if (token && sessions[token]) {
-      updatedSessions[token] = sessions[token];
+    if (currentToken && sessions[currentToken]) {
+      updatedSessions[currentToken] = sessions[currentToken];
     }
     writeSessions(updatedSessions);
 
     res.json({ success: true, message: 'পাসওয়ার্ড সফলভাবে ইনক্রিপ্ট করে আপডেট করা হয়েছে।' });
+  });
+
+  // --- Protected Admin Mutation APIs (requireAdminAuth) ---
+  app.post('/api/videos', requireAdminAuth, (req, res) => {
+    const payload = req.body;
+    const hasEmbed = payload && typeof payload.embedUrl === 'string' && payload.embedUrl.trim().length > 0;
+    const hasWebsite = payload && typeof payload.websiteUrl === 'string' && payload.websiteUrl.trim().length > 0;
+    if (!payload || (!hasEmbed && !hasWebsite)) {
+      return res.status(400).json({ success: false, error: 'embedUrl or websiteUrl is required' });
+    }
+
+    if (hasEmbed && !isSafeUrl(payload.embedUrl)) {
+      return res.status(400).json({ success: false, error: 'Invalid or unsafe embed URL scheme.' });
+    }
+    if (hasWebsite && !isSafeUrl(payload.websiteUrl)) {
+      return res.status(400).json({ success: false, error: 'Invalid or unsafe website URL scheme.' });
+    }
+    if (payload.thumbnailUrl && !isSafeUrl(payload.thumbnailUrl)) {
+      return res.status(400).json({ success: false, error: 'Invalid or unsafe thumbnail URL scheme.' });
+    }
+
+    const videos = readVideos();
+    const now = Date.now();
+    const rawId = typeof payload.id === 'string' && !payload.id.includes('/') && !payload.id.includes('..') ? payload.id.trim() : '';
+    const id = rawId || `vid_${now}_${Math.random().toString(36).substring(2, 7)}`;
+    const existingIdx = videos.findIndex((v: any) => v.id === id);
+
+    const videoObj = {
+      id,
+      thumbnailUrl: payload.thumbnailUrl || '',
+      embedUrl: payload.embedUrl || '',
+      websiteUrl: payload.websiteUrl || '',
+      title: payload.title || 'Untitled video',
+      sourceName: payload.sourceName || 'Marketify',
+      duration: payload.duration || '',
+      status: payload.status || 'active',
+      views: payload.views ?? (existingIdx >= 0 ? videos[existingIdx].views : 0),
+      likes: payload.likes ?? (existingIdx >= 0 ? videos[existingIdx].likes : 0),
+      commentsCount: 0,
+      createdAt: payload.createdAt || (existingIdx >= 0 ? videos[existingIdx].createdAt : now),
+      updatedAt: now
+    };
+
+    if (existingIdx >= 0) {
+      videos[existingIdx] = { ...videos[existingIdx], ...videoObj };
+    } else {
+      videos.unshift(videoObj);
+    }
+
+    writeVideos(videos);
+    syncToFirebase(id, videoObj);
+    res.json({ success: true, video: videoObj, id });
+  });
+
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+  // Soft Delete / Recycle Bin & 30-day Immortality Protection (Admin Protected)
+  app.delete('/api/videos/:id', requireAdminAuth, (req, res) => {
+    const { id } = req.params;
+    const videos = readVideos();
+    const target = videos.find((v: any) => v.id === id);
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Video not found' });
+    }
+
+    const createdTime = target.createdAt || target.updatedAt || 0;
+    const ageMs = Date.now() - createdTime;
+
+    // Strict 30-day permanent lock rule
+    if (ageMs > THIRTY_DAYS_MS) {
+      return res.status(403).json({
+        success: false,
+        locked: true,
+        error: 'নিরাপত্তা সুরক্ষা: এই ভিডিওটি যোগ করার পর ৩০ দিন অতিক্রান্ত হয়েছে। এটি চিরস্থায়ী হয়ে গেছে এবং ফায়ারবেস/ডাটাবেজ থেকে ডিলিট করা নিষিদ্ধ।'
+      });
+    }
+
+    // Soft delete to Recycle Bin - physical Firebase data is preserved, never destroyed
+    target.status = 'trashed';
+    target.deletedAt = Date.now();
+    target.updatedAt = Date.now();
+
+    writeVideos(videos);
+    syncToFirebase(id, target);
+    res.json({ success: true, message: 'Moved to 30-day Recycle Bin', video: target });
+  });
+
+  app.post('/api/videos/:id/trash', requireAdminAuth, (req, res) => {
+    const { id } = req.params;
+    const { deletedAt = Date.now() } = req.body || {};
+    const videos = readVideos();
+    const target = videos.find((v: any) => v.id === id);
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Video not found' });
+    }
+
+    const createdTime = target.createdAt || target.updatedAt || 0;
+    if (Date.now() - createdTime > THIRTY_DAYS_MS) {
+      return res.status(403).json({
+        success: false,
+        locked: true,
+        error: 'Permanent lock active: Video is older than 30 days.'
+      });
+    }
+
+    target.status = 'trashed';
+    target.deletedAt = deletedAt;
+    target.updatedAt = Date.now();
+
+    writeVideos(videos);
+    syncToFirebase(id, target);
+    res.json({ success: true, message: 'Video moved to Recycle Bin', video: target });
+  });
+
+  app.post('/api/videos/:id/restore', requireAdminAuth, (req, res) => {
+    const { id } = req.params;
+    const videos = readVideos();
+    const target = videos.find((v: any) => v.id === id);
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Video not found' });
+    }
+
+    target.status = 'active';
+    delete target.deletedAt;
+    target.updatedAt = Date.now();
+
+    writeVideos(videos);
+    syncToFirebase(id, target);
+    res.json({ success: true, message: 'Video restored from Recycle Bin', video: target });
+  });
+
+  app.post('/api/ads', requireAdminAuth, (req, res) => {
+    const ad = req.body;
+    if (!ad || !ad.id) {
+      return res.status(400).json({ success: false, error: 'Ad with id is required' });
+    }
+
+    const ads = readAds();
+    const idx = ads.findIndex((a: any) => a.id === ad.id);
+    const updatedAd = { ...ad, updatedAt: Date.now() };
+
+    if (idx >= 0) {
+      ads[idx] = { ...ads[idx], ...updatedAd };
+    } else {
+      ads.push(updatedAd);
+    }
+
+    writeAds(ads);
+    syncAdToFirebase(ad.id, updatedAd);
+    res.json({ success: true, ad: updatedAd });
+  });
+
+  app.delete('/api/ads/:id', requireAdminAuth, (req, res) => {
+    const { id } = req.params;
+    const ads = readAds().filter((a: any) => a.id !== id);
+    writeAds(ads);
+    deleteAdFromFirebase(id);
+    res.json({ success: true });
+  });
+
+  // --- Dual Firebase Sync & Status API (Admin Protected) ---
+  app.post('/api/admin/dual-sync', requireAdminAuth, async (_req, res) => {
+    try {
+      const videos = readVideos();
+      const ads = readAds();
+
+      // Ensure both Firebase instances receive the complete video & ads state
+      const videoMap: Record<string, any> = {};
+      videos.forEach((v: any) => {
+        if (v && v.id) videoMap[v.id] = v;
+      });
+
+      const adsMap: Record<string, any> = {};
+      ads.forEach((a: any) => {
+        if (a && a.id) adsMap[a.id] = a;
+      });
+
+      const results = await Promise.allSettled(
+        RTDB_ENDPOINTS.map(async (endpoint) => {
+          const vRes = await fetch(`${endpoint}/videos.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(videoMap)
+          });
+          const aRes = await fetch(`${endpoint}/ads.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(adsMap)
+          });
+          return { endpoint, videosOk: vRes.ok, adsOk: aRes.ok };
+        })
+      );
+
+      res.json({
+        success: true,
+        message: 'Dual Firebase synchronization completed successfully',
+        syncedVideos: videos.length,
+        syncedAds: ads.length,
+        endpoints: RTDB_ENDPOINTS,
+        results
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: 'Internal server error during synchronization' });
+    }
   });
 
   // --- App Download / Install Analytics ---

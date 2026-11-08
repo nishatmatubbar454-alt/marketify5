@@ -1,89 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { loadBalancedFetch, RTDB_ENDPOINTS } from '../lib/firebase';
 import type { Session } from '../types';
 
 const TOKEN_KEY = 'mk-session-token';
 const SESSION_CACHE_KEY = 'mk-session-cache';
-const LOCAL_AUTH_HASH_KEY = 'mk-sec-auth-cred';
-
-// Secure PBKDF2 parameters (Hash of 445566 with salt)
-// Plaintext password is NEVER stored anywhere
-const DEFAULT_SALT = 'mk_sec_9f8b2e1a4c7d0e3f';
-const DEFAULT_HASH = '348638291767b3891a480262edf390bb8120606f6a116641a50590fc9c9d0ee5';
-
-async function derivePBKDF2Hash(password: string, salt: string): Promise<string> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(password),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveBits']
-  );
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt: enc.encode(salt),
-      iterations: 100000,
-      hash: 'SHA-256'
-    },
-    keyMaterial,
-    256
-  );
-  const hashArray = Array.from(new Uint8Array(derivedBits));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function getStoredAuthConfig(): Promise<{ salt: string; hash: string }> {
-  // 1. Try Dual Firebase RTDB
-  try {
-    const res = await loadBalancedFetch('/admin/auth.json');
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.salt && data.hash) {
-        return { salt: data.salt, hash: data.hash };
-      }
-    }
-  } catch {}
-
-  // 2. Try localStorage override if changed
-  try {
-    const raw = localStorage.getItem(LOCAL_AUTH_HASH_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.salt && parsed.hash) return parsed;
-    }
-  } catch {}
-
-  return { salt: DEFAULT_SALT, hash: DEFAULT_HASH };
-}
-
-async function verifyAdminPasswordPBKDF2(password: string): Promise<boolean> {
-  const config = await getStoredAuthConfig();
-  const computedHash = await derivePBKDF2Hash(password, config.salt);
-  return computedHash === config.hash;
-}
-
-async function updateAdminPasswordPBKDF2(newPassword: string): Promise<void> {
-  const newSalt = 'mk_sec_' + Math.random().toString(36).substring(2, 10);
-  const newHash = await derivePBKDF2Hash(newPassword, newSalt);
-  const cred = { salt: newSalt, hash: newHash, updatedAt: Date.now() };
-
-  try {
-    localStorage.setItem(LOCAL_AUTH_HASH_KEY, JSON.stringify(cred));
-  } catch {}
-
-  // Dual write to both Firebase RTDBs
-  await Promise.allSettled(
-    RTDB_ENDPOINTS.map((endpoint) =>
-      fetch(`${endpoint}/admin/auth.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cred)
-      }).catch(() => {})
-    )
-  );
-}
 
 interface AuthValue {
   session: Session | null;
@@ -108,8 +27,10 @@ const AuthContext = createContext<AuthValue>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(() => {
     try {
+      // Clear legacy insecure keys
       localStorage.removeItem('mk-admin-pass');
       localStorage.removeItem('mk-session');
+      localStorage.removeItem('mk-sec-auth-cred');
 
       const cached = localStorage.getItem(SESSION_CACHE_KEY);
       const token = localStorage.getItem(TOKEN_KEY);
@@ -120,17 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null;
   });
 
-  const [loading, setLoading] = useState(() => {
-    try {
-      const token = localStorage.getItem(TOKEN_KEY);
-      const cached = localStorage.getItem(SESSION_CACHE_KEY);
-      return !token || !cached;
-    } catch {
-      return false;
-    }
-  });
+  const [loading, setLoading] = useState(true);
 
-  // Verify session on mount (supports both Express backend & Cloudflare Workers)
+  // Verify server-side session on mount
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
@@ -150,22 +63,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then((data) => {
         if (data && data.valid && data.session) {
           setSession(data.session);
-          localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(data.session));
-        } else if (data && !data.valid) {
-          logout();
+          try {
+            localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(data.session));
+          } catch {}
         } else {
-          // If server returns 404 (e.g. on Cloudflare Workers / Static hosting),
-          // preserve valid cached session
-          const cached = localStorage.getItem(SESSION_CACHE_KEY);
-          if (cached) {
-            setSession(JSON.parse(cached));
-          }
+          logout();
         }
       })
       .catch(() => {
+        // If network error, preserve cached session temporarily
         const cached = localStorage.getItem(SESSION_CACHE_KEY);
         if (cached) {
-          setSession(JSON.parse(cached));
+          try {
+            setSession(JSON.parse(cached));
+          } catch {}
         }
       })
       .finally(() => {
@@ -179,45 +90,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('পাসওয়ার্ড প্রদান করা আবশ্যক।');
     }
 
-    // 1. Try Express backend server if available
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ password: pass })
-      });
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ password: pass })
+    });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.success) {
-          const nextSession: Session = data.session || {
-            role: 'admin',
-            name: 'Administrator'
-          };
-          localStorage.setItem(TOKEN_KEY, data.token);
-          localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(nextSession));
-          setSession(nextSession);
-          return nextSession;
-        }
-      }
-    } catch {}
+    const data = await res.json().catch(() => null);
 
-    // 2. Client-side PBKDF2 hash verification (works seamlessly on Cloudflare Workers)
-    const isValid = await verifyAdminPasswordPBKDF2(pass);
-    if (!isValid) {
-      throw new Error('পাসওয়ার্ড সঠিক নয়। আবার চেষ্টা করুন।');
+    if (!res.ok || !data?.success) {
+      const errMsg = data?.error || 'ভুল পাসওয়ার্ড! অ্যাক্সেস প্রত্যাখ্যাত।';
+      throw new Error(errMsg);
     }
 
-    const token = 'mk_adm_' + Date.now() + '_' + Math.random().toString(36).substring(2);
-    const nextSession: Session = {
+    const nextSession: Session = data.session || {
       role: 'admin',
       name: 'Administrator'
     };
 
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(nextSession));
+    try {
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(nextSession));
+    } catch {}
+
     setSession(nextSession);
     return nextSession;
   };
@@ -234,40 +131,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }).catch(() => {});
     }
 
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(SESSION_CACHE_KEY);
-    localStorage.removeItem('mk-admin-pass');
-    localStorage.removeItem('mk-session');
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(SESSION_CACHE_KEY);
+      localStorage.removeItem('mk-admin-pass');
+      localStorage.removeItem('mk-session');
+      localStorage.removeItem('mk-sec-auth-cred');
+    } catch {}
     setSession(null);
   };
 
   const updatePassword = async (currentPass: string, newPass: string): Promise<void> => {
-    const validCurrent = await verifyAdminPasswordPBKDF2(currentPass.trim());
-    if (!validCurrent) {
-      throw new Error('বর্তমান পাসওয়ার্ড সঠিক নয়।');
-    }
-    if (newPass.trim().length < 6) {
-      throw new Error('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      throw new Error('অননুমোদিত: দয়া করে আবার লগইন করুন।');
     }
 
-    // Try server if available
-    try {
-      const token = localStorage.getItem(TOKEN_KEY);
-      await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          currentPassword: currentPass,
-          newPassword: newPass
-        })
-      });
-    } catch {}
+    if (!currentPass.trim()) {
+      throw new Error('বর্তমান পাসওয়ার্ড প্রদান করুন।');
+    }
 
-    // Update PBKDF2 encrypted hash
-    await updateAdminPasswordPBKDF2(newPass.trim());
+    if (newPass.trim().length < 4) {
+      throw new Error('নতুন পাসওয়ার্ড অন্তত ৪ অক্ষরের হতে হবে।');
+    }
+
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        currentPassword: currentPass.trim(),
+        newPassword: newPass.trim()
+      })
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || 'পাসওয়ার্ড পরিবর্তন ব্যর্থ হয়েছে।');
+    }
   };
 
   return (

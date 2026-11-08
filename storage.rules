@@ -2,9 +2,13 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    // Thumbnails & Public Media
     match /{allPaths=**} {
       allow read: if true;
-      allow write: if true;
+      // Restrict uploads strictly to valid images under 5MB to prevent malicious payload uploads
+      allow write: if request.resource != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
     }
   }
 }

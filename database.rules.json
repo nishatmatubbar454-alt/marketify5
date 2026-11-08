@@ -1,0 +1,41 @@
+{
+  "rules": {
+    "videos": {
+      ".read": true,
+      "$videoId": {
+        ".write": "auth != null",
+        "views": {
+          ".write": true,
+          ".validate": "newData.isNumber() && (!data.exists() || newData.val() >= data.val())"
+        },
+        "likes": {
+          ".write": true,
+          ".validate": "newData.isNumber()"
+        },
+        "commentsCount": {
+          ".write": true,
+          ".validate": "newData.isNumber()"
+        }
+      }
+    },
+    "ads": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "analytics": {
+      ".read": true,
+      "appInstalls": {
+        ".write": true,
+        ".validate": "newData.isNumber()"
+      }
+    },
+    "downloadLink": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "admin": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

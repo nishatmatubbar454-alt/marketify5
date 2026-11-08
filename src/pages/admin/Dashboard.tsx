@@ -64,7 +64,13 @@ export function Dashboard() {
   const handleDualSync = async () => {
     setIsSyncingFirebases(true);
     try {
-      const res = await fetch('/api/admin/dual-sync', { method: 'POST' });
+      const token = typeof window !== 'undefined' ? localStorage.getItem('mk-session-token') : null;
+      const res = await fetch('/api/admin/dual-sync', {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
       const data = await res.json();
       if (data && data.success) {
         showToast('উভয় ফায়ারবেস (himrw-fae65 + maka-bfd59) সফলভাবে সিঙ্ক হয়েছে!');

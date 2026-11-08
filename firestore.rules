@@ -2,25 +2,38 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Videos Collection
+    // Videos Collection: Public read permitted; mutations strictly restricted to authorized server backend
     match /videos/{videoId} {
       allow read: if true;
-      allow create, update, delete: if true;
+      allow write: if false;
 
-      // Subcollection for Video Comments
+      // Subcollection for Video Comments: validated public creation, no tampering or unauthorized deletion
       match /comments/{commentId} {
         allow read: if true;
-        allow create, update, delete: if true;
+        allow create: if request.resource.data.author is string
+                      && request.resource.data.author.size() > 0
+                      && request.resource.data.author.size() <= 60
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() > 0
+                      && request.resource.data.text.size() <= 1000
+                      && request.resource.data.createdAt is number;
+        allow update, delete: if false;
       }
     }
 
-    // Ads Management Collection
+    // Ads Management Collection: Public read permitted, client-side writes blocked
     match /ads/{adId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if false;
     }
 
-    // Default fallback
+    // Analytics Collection: Public read permitted, client-side writes blocked
+    match /analytics/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Default fallback lockdown: deny all unmapped access
     match /{document=**} {
       allow read, write: if false;
     }
