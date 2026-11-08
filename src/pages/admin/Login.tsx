@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HandshakeIcon, LockIcon } from 'lucide-react';
+import { EyeIcon, EyeOffIcon, LockIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -50,16 +51,24 @@ export function Login() {
           Password
         </label>
         <div className="mt-1.5 flex items-center gap-2 rounded-md bg-white/10 px-3">
-          <LockIcon size={15} className="text-white/40" />
+          <LockIcon size={15} className="text-white/40 shrink-0" />
           <input
             id="password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
             className="w-full bg-transparent py-2.5 text-[14px] text-white placeholder:text-white/30 focus:outline-none"
             placeholder="Enter password..."
           />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="text-white/40 hover:text-white/80 p-1 shrink-0"
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+          >
+            {showPassword ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
+          </button>
         </div>
 
         {error && (

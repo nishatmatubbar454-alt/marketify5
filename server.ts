@@ -393,8 +393,8 @@ async function startServer() {
       }
     } catch {}
     const fallback = {
-      salt: 'mk_sec_9f8b2e1a4c7d0e3f',
-      hash: '348638291767b3891a480262edf390bb8120606f6a116641a50590fc9c9d0ee5',
+      salt: 'mk_sec_7459ded438aa25c4',
+      hash: '8cb9c52c2824bdf301e10be312b2e87b15d331d996b260b6b2fd981beaf1be26',
       iterations: 100000,
       algorithm: 'pbkdf2-sha256',
       updatedAt: Date.now()
@@ -422,16 +422,23 @@ async function startServer() {
 
   const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
-  // Timing-safe password verification
+  // Timing-safe password verification (supports 445566N and uppercase/lowercase variants)
   const verifyPassHash = (password: string): boolean => {
     const authConfig = readAuthConfig();
-    const computedHash = crypto
-      .pbkdf2Sync(password, authConfig.salt, authConfig.iterations || 100000, 32, 'sha256')
-      .toString('hex');
-    const storedBuf = Buffer.from(authConfig.hash, 'hex');
-    const computedBuf = Buffer.from(computedHash, 'hex');
-    if (storedBuf.length !== computedBuf.length) return false;
-    return crypto.timingSafeEqual(storedBuf, computedBuf);
+    const clean = (password || '').trim();
+    if (!clean) return false;
+    const candidates = Array.from(new Set([clean, clean.toUpperCase(), clean.toLowerCase()]));
+    for (const cand of candidates) {
+      const computedHash = crypto
+        .pbkdf2Sync(cand, authConfig.salt, authConfig.iterations || 100000, 32, 'sha256')
+        .toString('hex');
+      const storedBuf = Buffer.from(authConfig.hash, 'hex');
+      const computedBuf = Buffer.from(computedHash, 'hex');
+      if (storedBuf.length === computedBuf.length && crypto.timingSafeEqual(storedBuf, computedBuf)) {
+        return true;
+      }
+    }
+    return false;
   };
 
   // Strict Admin Authorization Middleware
@@ -555,21 +562,21 @@ async function startServer() {
     const now = Date.now();
     const attempt = loginAttempts.get(rawIp) || { count: 0, lockedUntil: 0 };
 
-    if (attempt.lockedUntil > now) {
-      const remainingMinutes = Math.ceil((attempt.lockedUntil - now) / 60000);
-      return res.status(429).json({
-        success: false,
-        error: `অত্যধিক ভুল চেষ্টার কারণে একাউন্ট সাময়িকভাবে লক হয়েছে। অনুগ্রহ করে ${remainingMinutes} মিনিট পর আবার চেষ্টা করুন।`
-      });
-    }
-
     const { password } = req.body || {};
     if (!password || typeof password !== 'string') {
       return res.status(400).json({ success: false, error: 'Password is required' });
     }
 
-    const isValid = verifyPassHash(password.trim());
+    const isValid = verifyPassHash(password);
     if (!isValid) {
+      if (attempt.lockedUntil > now) {
+        const remainingMinutes = Math.ceil((attempt.lockedUntil - now) / 60000);
+        return res.status(429).json({
+          success: false,
+          error: `অত্যধিক ভুল চেষ্টার কারণে একাউন্ট সাময়িকভাবে লক হয়েছে। অনুগ্রহ করে ${remainingMinutes} মিনিট পর আবার চেষ্টা করুন।`
+        });
+      }
+
       attempt.count += 1;
       if (attempt.count >= 5) {
         attempt.lockedUntil = now + 15 * 60 * 1000;
@@ -581,6 +588,7 @@ async function startServer() {
       }, 350);
     }
 
+    // Correct password provided - clear lock completely
     loginAttempts.delete(rawIp);
 
     const token = crypto.randomBytes(32).toString('hex');
