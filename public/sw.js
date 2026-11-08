@@ -1,4 +1,4 @@
-const CACHE_NAME = 'marketify-cache-v5';
+const CACHE_NAME = 'marketify-cache-v7';
 const STATIC_ASSETS = [
   '/manifest.json',
   '/logo-custom.png',
@@ -46,14 +46,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache images and static files for aggressive data saving
+  // Cache images and static media for aggressive data saving (excluding js scripts)
   if (
     event.request.destination === 'image' ||
     url.pathname.endsWith('.png') ||
     url.pathname.endsWith('.jpg') ||
     url.pathname.endsWith('.webp') ||
     url.pathname.endsWith('.svg') ||
-    url.pathname.startsWith('/assets/') ||
     url.hostname.includes('ytimg.com') ||
     url.hostname.includes('ibb.co')
   ) {
