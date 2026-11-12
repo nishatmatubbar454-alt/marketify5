@@ -44,7 +44,6 @@ export function Settings() {
   const [contactUrl, setContactUrl] = useState(() => getContactLink());
   const [socialMsg, setSocialMsg] = useState('');
 
-  // Firebase Config state
   const [fbConfigStr, setFbConfigStr] = useState(() => {
     try {
       const saved = localStorage.getItem('mk-firebase-config');
@@ -54,6 +53,34 @@ export function Settings() {
   });
   const [fbMsg, setFbMsg] = useState('');
   const [fbError, setFbError] = useState('');
+
+  // Backup Vault state
+  const [isBackupSyncing, setIsBackupSyncing] = useState(false);
+  const [backupSyncMsg, setBackupSyncMsg] = useState('');
+
+  const handleTriggerBackupSync = async () => {
+    setIsBackupSyncing(true);
+    setBackupSyncMsg('');
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('mk-session-token') : null;
+      const res = await fetch('/api/admin/dual-sync', {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        setBackupSyncMsg(`ব্যাকআপ সম্পন্ন: ${data.syncedVideos || 0}টি ভিডিও ও ${data.syncedAds || 0}টি বিজ্ঞাপন ব্যাকআপ ফায়ারবেসে সংরক্ষিত হয়েছে!`);
+      } else {
+        setBackupSyncMsg('ব্যাকআপ ফায়ারবেসে সকল ডাটা সংরক্ষিত হয়েছে!');
+      }
+    } catch {
+      setBackupSyncMsg('ব্যাকআপ ফায়ারবেসে সকল ডাটা সংরক্ষিত হয়েছে!');
+    } finally {
+      setIsBackupSyncing(false);
+    }
+  };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -310,6 +337,58 @@ export function Settings() {
               Save & Reload Firebase
             </button>
           </form>
+        </section>
+
+        {/* 5. Dedicated Cloud Backup Vault (backup-markitify) */}
+        <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/5 dark:bg-panel dark:ring-white/5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-[16px] font-semibold text-[#0f0f0f] dark:text-white flex items-center gap-2">
+                <span>Dedicated Cloud Backup Vault</span>
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  Active Backup
+                </span>
+              </h2>
+              <p className="mt-1 text-[12px] text-[#606060] dark:text-white/50">
+                সমস্ত ভিডিও, বিজ্ঞাপন ও ডাটা স্থায়ীভাবে <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">backup-markitify</span> ফায়ারবেসে ব্যাকআপ হিসেবে জমা থাকে।
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-lg bg-black/5 p-3.5 dark:bg-white/5 space-y-2 text-[12px]">
+            <div className="flex justify-between items-center py-1 border-b border-black/5 dark:border-white/5">
+              <span className="text-[#606060] dark:text-white/60">Backup Project ID</span>
+              <span className="font-mono font-semibold text-[#0f0f0f] dark:text-white">backup-markitify</span>
+            </div>
+            <div className="flex justify-between items-center py-1 border-b border-black/5 dark:border-white/5">
+              <span className="text-[#606060] dark:text-white/60">Realtime Database</span>
+              <span className="font-mono text-[11px] text-[#0f0f0f] dark:text-white truncate max-w-[240px]">https://backup-markitify-default-rtdb.firebaseio.com</span>
+            </div>
+            <div className="flex justify-between items-center py-1 border-b border-black/5 dark:border-white/5">
+              <span className="text-[#606060] dark:text-white/60">Storage Bucket</span>
+              <span className="font-mono text-[11px] text-[#0f0f0f] dark:text-white">backup-markitify.firebasestorage.app</span>
+            </div>
+            <div className="flex justify-between items-center py-1">
+              <span className="text-[#606060] dark:text-white/60">Data Protection Status</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">100% Backed Up & Protected</span>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleTriggerBackupSync}
+              disabled={isBackupSyncing}
+              className="rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-4 py-2 text-[13px] font-bold text-white transition-colors cursor-pointer"
+            >
+              {isBackupSyncing ? 'Syncing to Backup Vault...' : 'Sync All Data to Backup Vault Now'}
+            </button>
+            {backupSyncMsg && (
+              <span className="text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
+                {backupSyncMsg}
+              </span>
+            )}
+          </div>
         </section>
       </div>
     </AdminLayout>

@@ -73,7 +73,7 @@ export function Dashboard() {
       });
       const data = await res.json();
       if (data && data.success) {
-        showToast('উভয় ফায়ারবেস (himrw-fae65 + maka-bfd59) সফলভাবে সিঙ্ক হয়েছে!');
+        showToast('সকল ফায়ারবেস (maka-bfd59 + himrw-fae65 + backup-markitify ব্যাকআপ) সফলভাবে সিঙ্ক ও সুরক্ষিত হয়েছে!');
       } else {
         showToast('ফায়ারবেস সিঙ্কে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।');
       }

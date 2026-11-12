@@ -29,6 +29,17 @@ export const SECONDARY_FIREBASE_CONFIG = {
   measurementId: "G-L5EF52FPXW"
 };
 
+// Firebase Project 3: Dedicated Safe Cloud Backup (backup-markitify)
+export const BACKUP_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDgxbqtjVToaR7PB5z33t-608LgWPRv8Nc",
+  authDomain: "backup-markitify.firebaseapp.com",
+  databaseURL: "https://backup-markitify-default-rtdb.firebaseio.com",
+  projectId: "backup-markitify",
+  storageBucket: "backup-markitify.firebasestorage.app",
+  messagingSenderId: "167426337568",
+  appId: "1:167426337568:web:5fe17e4eed6cb9fcbac545"
+};
+
 function getFirebaseConfig() {
   try {
     const saved = localStorage.getItem('mk-firebase-config');
@@ -45,7 +56,7 @@ function getFirebaseConfig() {
 
 const activePrimaryConfig = getFirebaseConfig();
 
-// Initialize Primary Firebase: maka-bfd59 (আজকে দেওয়া নতুন ফায়ারবেস)
+// Initialize Primary Firebase: maka-bfd59
 export const primaryApp =
   getApps().find((a) => a.name === '[DEFAULT]') || initializeApp(activePrimaryConfig);
 export const primaryDb = getFirestore(primaryApp);
@@ -53,7 +64,7 @@ export const primaryAuth = getAuth(primaryApp);
 export const primaryStorage = getStorage(primaryApp);
 export const primaryRealtimeDb = getDatabase(primaryApp);
 
-// Initialize Secondary Firebase: himrw-fae65 (প্রজেক্টের শুরুতে থাকা ফায়ারবেস)
+// Initialize Secondary Firebase: himrw-fae65
 export const secondaryApp =
   getApps().find((a) => a.name === 'secondaryApp') ||
   initializeApp(SECONDARY_FIREBASE_CONFIG, 'secondaryApp');
@@ -61,6 +72,15 @@ export const secondaryDb = getFirestore(secondaryApp);
 export const secondaryAuth = getAuth(secondaryApp);
 export const secondaryStorage = getStorage(secondaryApp);
 export const secondaryRealtimeDb = getDatabase(secondaryApp);
+
+// Initialize Backup Firebase: backup-markitify (Dedicated Safe Storage)
+export const backupApp =
+  getApps().find((a) => a.name === 'backupApp') ||
+  initializeApp(BACKUP_FIREBASE_CONFIG, 'backupApp');
+export const backupDb = getFirestore(backupApp);
+export const backupAuth = getAuth(backupApp);
+export const backupStorage = getStorage(backupApp);
+export const backupRealtimeDb = getDatabase(backupApp);
 
 // Default exports for backward compatibility
 export const app = primaryApp;
@@ -93,7 +113,8 @@ if (typeof window !== 'undefined' && activePrimaryConfig.measurementId) {
 
 export const RTDB_ENDPOINTS = [
   'https://maka-bfd59-default-rtdb.firebaseio.com',
-  'https://himrw-fae65-default-rtdb.firebaseio.com'
+  'https://himrw-fae65-default-rtdb.firebaseio.com',
+  'https://backup-markitify-default-rtdb.firebaseio.com'
 ];
 
 let roundRobinCounter = Math.floor(Math.random() * 2);
@@ -110,8 +131,7 @@ export function getBalancedEndpoints(path: string = ''): [string, string] {
 }
 
 /**
- * Load-balanced HTTP REST fetch across both Firebase projects with instant failover.
- * Distributes 50% traffic to himrw-fae65 and 50% to maka-bfd59.
+ * Load-balanced HTTP REST fetch across Firebase projects with instant failover.
  */
 export async function loadBalancedFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const [url1, url2] = getBalancedEndpoints(path);
@@ -131,33 +151,40 @@ export async function loadBalancedFetch(path: string, options: RequestInit = {})
     }
     return res;
   } catch {
-    // Failover seamlessly to secondary Firebase
-    return fetch(url2, options);
+    // Failover seamlessly to secondary Firebase or backup
+    try {
+      return await fetch(url2, options);
+    } catch {
+      const cleanPath = path.startsWith('/') ? path : `/${path}`;
+      return fetch(`${RTDB_ENDPOINTS[2]}${cleanPath}`, options);
+    }
   }
 }
 
 /**
- * Dual RTDB Write: writes simultaneously to both Firebase Realtime Databases
+ * Multi RTDB Write: writes simultaneously to Primary, Secondary, and Dedicated Backup RTDB
  */
 export async function dualRtdbSet(path: string, value: any): Promise<void> {
   await Promise.allSettled([
     rtdbSet(rtdbRef(primaryRealtimeDb, path), value),
-    rtdbSet(rtdbRef(secondaryRealtimeDb, path), value)
+    rtdbSet(rtdbRef(secondaryRealtimeDb, path), value),
+    rtdbSet(rtdbRef(backupRealtimeDb, path), value)
   ]);
 }
 
 /**
- * Dual RTDB Remove: removes simultaneously from both Firebase Realtime Databases
+ * Multi RTDB Remove: removes simultaneously from Primary, Secondary, and Backup RTDB
  */
 export async function dualRtdbRemove(path: string): Promise<void> {
   await Promise.allSettled([
     rtdbRemove(rtdbRef(primaryRealtimeDb, path)),
-    rtdbRemove(rtdbRef(secondaryRealtimeDb, path))
+    rtdbRemove(rtdbRef(secondaryRealtimeDb, path)),
+    rtdbRemove(rtdbRef(backupRealtimeDb, path))
   ]);
 }
 
 /**
- * Dual Firestore Write: writes to both Firestore instances
+ * Multi Firestore Write: writes to Primary, Secondary, and Dedicated Backup Firestore
  */
 export async function dualFirestoreSetDoc(
   collectionName: string,
@@ -167,12 +194,13 @@ export async function dualFirestoreSetDoc(
 ): Promise<void> {
   await Promise.allSettled([
     setDoc(doc(primaryDb, collectionName, docId), data, options),
-    setDoc(doc(secondaryDb, collectionName, docId), data, options)
+    setDoc(doc(secondaryDb, collectionName, docId), data, options),
+    setDoc(doc(backupDb, collectionName, docId), data, options)
   ]);
 }
 
 /**
- * Dual Firestore Delete: deletes from both Firestore instances
+ * Multi Firestore Delete: deletes from Primary, Secondary, and Dedicated Backup Firestore
  */
 export async function dualFirestoreDeleteDoc(
   collectionName: string,
@@ -180,6 +208,7 @@ export async function dualFirestoreDeleteDoc(
 ): Promise<void> {
   await Promise.allSettled([
     deleteDoc(doc(primaryDb, collectionName, docId)),
-    deleteDoc(doc(secondaryDb, collectionName, docId))
+    deleteDoc(doc(secondaryDb, collectionName, docId)),
+    deleteDoc(doc(backupDb, collectionName, docId))
   ]);
 }

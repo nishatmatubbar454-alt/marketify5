@@ -154,7 +154,8 @@ function writeAds(ads: any[]) {
 
 const RTDB_ENDPOINTS = [
   'https://maka-bfd59-default-rtdb.firebaseio.com',
-  'https://himrw-fae65-default-rtdb.firebaseio.com'
+  'https://himrw-fae65-default-rtdb.firebaseio.com',
+  'https://backup-markitify-default-rtdb.firebaseio.com'
 ];
 
 let serverReadCounter = 0;
@@ -519,10 +520,11 @@ async function startServer() {
       success: true,
       activeProjects: [
         { id: 'maka-bfd59', role: 'Primary & Realtime DB', url: RTDB_ENDPOINTS[0] },
-        { id: 'himrw-fae65', role: 'Secondary Load Balancer & Backup', url: RTDB_ENDPOINTS[1] }
+        { id: 'himrw-fae65', role: 'Secondary Load Balancer', url: RTDB_ENDPOINTS[1] },
+        { id: 'backup-markitify', role: 'Dedicated Safe Cloud Backup (All Data Stored)', url: RTDB_ENDPOINTS[2] }
       ],
-      loadBalancing: '50/50 Round-Robin & Instant Failover',
-      replication: 'Active-Active Dual Write'
+      loadBalancing: 'Multi-Cluster Active Replication & Instant Failover',
+      replication: 'Active-Active Multi-Cluster Sync + Dedicated Safe Backup Vault'
     });
   });
 
@@ -876,7 +878,7 @@ async function startServer() {
 
       res.json({
         success: true,
-        message: 'Dual Firebase synchronization completed successfully',
+        message: 'Multi Firebase synchronization & Dedicated Cloud Backup completed successfully',
         syncedVideos: videos.length,
         syncedAds: ads.length,
         endpoints: RTDB_ENDPOINTS,
