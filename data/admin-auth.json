@@ -1,7 +1,6 @@
 {
   "salt": "mk_sec_7459ded438aa25c4",
   "hash": "8cb9c52c2824bdf301e10be312b2e87b15d331d996b260b6b2fd981beaf1be26",
-  "altHash": "9164831126f1d9b53d5082619d12718cfc092a3e70c9943fe8ee63f461c417ae",
   "iterations": 100000,
   "algorithm": "pbkdf2-sha256",
   "updatedAt": 1794073360000

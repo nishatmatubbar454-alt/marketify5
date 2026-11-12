@@ -101,12 +101,12 @@ export function BottomNav() {
         </div>
 
         {/* Center: Sleek Elevated Emblem with Custom 3D Logo */}
-        <div className="relative -top-4 sm:-top-4.5 mx-0.5 shrink-0">
+        <div className="relative -top-5 sm:-top-5.5 mx-0.5 shrink-0">
           <button
             type="button"
             onClick={handleCenterClick}
             aria-label="Marketify Hub"
-            className="w-12 h-12 sm:w-13 sm:h-13 rounded-full border-[2.5px] border-[#c98e28] dark:border-[#e2a233] bg-[#fffdfa] dark:bg-[#201f1e] shadow-[0_4px_16px_rgba(201,142,40,0.4)] hover:shadow-[0_6px_20px_rgba(201,142,40,0.5)] flex items-center justify-center cursor-pointer hover:scale-105 active:scale-90 transition-all duration-150 overflow-hidden p-0.5 group"
+            className="w-14 h-14 sm:w-[60px] sm:h-[60px] rounded-full border-[2.5px] border-[#c98e28] dark:border-[#e2a233] bg-[#fffdfa] dark:bg-[#201f1e] shadow-[0_4px_18px_rgba(201,142,40,0.45)] hover:shadow-[0_6px_22px_rgba(201,142,40,0.55)] flex items-center justify-center cursor-pointer hover:scale-105 active:scale-90 transition-all duration-150 overflow-hidden p-0.5 group"
           >
             <img
               src="/app-logo.png"

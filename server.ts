@@ -395,7 +395,6 @@ async function startServer() {
     const fallback = {
       salt: 'mk_sec_7459ded438aa25c4',
       hash: '8cb9c52c2824bdf301e10be312b2e87b15d331d996b260b6b2fd981beaf1be26',
-      altHash: '9164831126f1d9b53d5082619d12718cfc092a3e70c9943fe8ee63f461c417ae',
       iterations: 100000,
       algorithm: 'pbkdf2-sha256',
       updatedAt: Date.now()
@@ -423,34 +422,24 @@ async function startServer() {
 
   const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
-  // Timing-safe password verification (supports 44566N, 445566N, uppercase/lowercase and single/double-5 typo variations)
+  // Timing-safe password verification: strictly ONLY 445566N
   const verifyPassHash = (password: string): boolean => {
     const authConfig = readAuthConfig();
     const clean = (password || '').trim();
     if (!clean) return false;
 
-    const rawVariants = [clean, clean.toUpperCase(), clean.toLowerCase()];
-    const variants = new Set<string>();
-    for (const v of rawVariants) {
-      variants.add(v);
-      if (v.includes('44566')) variants.add(v.replace('44566', '445566'));
-      if (v.includes('445566')) variants.add(v.replace('445566', '44566'));
+    // Strictly ONLY 445566N (case-insensitive)
+    if (clean.toUpperCase() !== '445566N') {
+      return false;
     }
 
-    const targetHashes = [authConfig.hash, authConfig.altHash].filter(Boolean) as string[];
-
-    for (const cand of Array.from(variants)) {
-      const computedHash = crypto
-        .pbkdf2Sync(cand, authConfig.salt, authConfig.iterations || 100000, 32, 'sha256')
-        .toString('hex');
-      const computedBuf = Buffer.from(computedHash, 'hex');
-
-      for (const tHash of targetHashes) {
-        const storedBuf = Buffer.from(tHash, 'hex');
-        if (storedBuf.length === computedBuf.length && crypto.timingSafeEqual(storedBuf, computedBuf)) {
-          return true;
-        }
-      }
+    const computedHash = crypto
+      .pbkdf2Sync('445566N', authConfig.salt, authConfig.iterations || 100000, 32, 'sha256')
+      .toString('hex');
+    const storedBuf = Buffer.from(authConfig.hash, 'hex');
+    const computedBuf = Buffer.from(computedHash, 'hex');
+    if (storedBuf.length === computedBuf.length && crypto.timingSafeEqual(storedBuf, computedBuf)) {
+      return true;
     }
     return false;
   };

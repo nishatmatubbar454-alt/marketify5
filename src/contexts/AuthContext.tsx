@@ -6,14 +6,8 @@ const SESSION_CACHE_KEY = 'mk-session-cache';
 
 function checkAdminPassword(input: string): boolean {
   const clean = (input || '').trim();
-  const upper = clean.toUpperCase();
-  // Accepts 445566N, 44566N, 445566, 44566 (case-insensitive)
-  return (
-    upper === '445566N' ||
-    upper === '44566N' ||
-    upper === '445566' ||
-    upper === '44566'
-  );
+  // Strictly ONLY 445566N - no other password in the world can open it
+  return clean.toUpperCase() === '445566N';
 }
 
 interface AuthValue {
