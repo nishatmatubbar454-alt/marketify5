@@ -106,7 +106,7 @@ export function BottomNav() {
             type="button"
             onClick={handleCenterClick}
             aria-label="Marketify Hub"
-            className="w-12 h-12 sm:w-13 sm:h-13 rounded-full border-[2.5px] border-[#c98e28] dark:border-[#e2a233] bg-[#fffdfa] dark:bg-[#201f1e] shadow-[0_4px_16px_rgba(201,142,40,0.4)] hover:shadow-[0_6px_20px_rgba(201,142,40,0.5)] flex items-center justify-center cursor-pointer hover:scale-105 active:scale-90 transition-all duration-150 overflow-hidden p-0.5 group"
+            className="w-12 h-12 sm:w-13 sm:h-13 rounded-full border-[2.5px] border-[#c98e28] dark:border-[#e2a233] bg-[#091224] shadow-[0_4px_16px_rgba(201,142,40,0.4)] hover:shadow-[0_6px_20px_rgba(201,142,40,0.5)] flex items-center justify-center cursor-pointer hover:scale-105 active:scale-90 transition-all duration-150 overflow-hidden p-0 group"
           >
             <img
               src="/app-logo.png"
@@ -115,7 +115,7 @@ export function BottomNav() {
                 (e.currentTarget as HTMLImageElement).src =
                   'https://i.ibb.co/fVgpTyRP/file-00000000db7881fab842b1c05ce63eaa.png';
               }}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+              className="w-full h-full object-cover scale-[1.12] group-hover:scale-[1.18] transition-transform duration-150"
             />
           </button>
         </div>
