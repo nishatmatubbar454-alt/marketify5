@@ -131,55 +131,139 @@ export function getBalancedEndpoints(path: string = ''): [string, string] {
 }
 
 /**
- * Load-balanced HTTP REST fetch across Firebase projects with instant failover.
+ * Fetch JSON from a specific RTDB endpoint with configurable timeout
  */
-export async function loadBalancedFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const [url1, url2] = getBalancedEndpoints(path);
-
+export async function fetchRtdbJson<T = any>(
+  baseEndpoint: string,
+  path: string,
+  timeoutMs = 15000
+): Promise<T | null> {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
-    const res = await fetch(url1, { ...options, signal: controller.signal });
-    clearTimeout(timer);
-
-    if (res.ok) {
-      return res;
-    }
-    // Failover if server error or rate-limited
-    if (res.status >= 429) {
-      throw new Error(`Primary status ${res.status}`);
-    }
-    return res;
+    const res = await fetch(`${baseEndpoint}${cleanPath}`, {
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
   } catch {
-    // Failover seamlessly to secondary Firebase or backup
-    try {
-      return await fetch(url2, options);
-    } catch {
-      const cleanPath = path.startsWith('/') ? path : `/${path}`;
-      return fetch(`${RTDB_ENDPOINTS[2]}${cleanPath}`, options);
-    }
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 /**
- * Multi RTDB Write: writes simultaneously to Primary, Secondary, and Dedicated Backup RTDB
+ * Fetch a single video by ID across ALL 3 Firebase RTDBs, returning the first complete valid record.
+ */
+export async function fetchVideoByIdAcrossFirebases(id: string): Promise<Record<string, any> | null> {
+  const path = `/videos/${encodeURIComponent(id)}.json`;
+  const results = await Promise.allSettled(
+    RTDB_ENDPOINTS.map((endpoint) => fetchRtdbJson<Record<string, any>>(endpoint, path, 8000))
+  );
+  let best: Record<string, any> | null = null;
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value && typeof r.value === 'object') {
+      const v = r.value;
+      const hasEmbed = typeof v.embedUrl === 'string' && v.embedUrl.trim().length > 0;
+      const hasWeb =
+        (typeof v.websiteUrl === 'string' && v.websiteUrl.trim().length > 0) ||
+        (typeof v.targetUrl === 'string' && v.targetUrl.trim().length > 0);
+      if (hasEmbed || hasWeb) {
+        if (!best || (v.updatedAt || 0) > (best.updatedAt || 0)) {
+          best = v;
+        }
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Load-balanced HTTP REST fetch across Firebase projects with generous timeout & instant failover.
+ */
+export async function loadBalancedFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const [url1, url2] = getBalancedEndpoints(path);
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const url3 = `${RTDB_ENDPOINTS[2]}${cleanPath}`;
+  // Full /videos.json (~20MB) needs generous timeout so mobile connections never abort prematurely
+  const isFullVideosDump = cleanPath === '/videos.json';
+  const timeoutMs = isFullVideosDump ? 45000 : 10000;
+
+  for (const url of [url1, url2, url3]) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        return res;
+      }
+    } catch {
+      clearTimeout(timer);
+    }
+  }
+  return fetch(url1, options);
+}
+
+/**
+ * Multi RTDB Write: writes simultaneously via direct REST PUT + SDK to Primary, Secondary, and Dedicated Backup RTDB
  */
 export async function dualRtdbSet(path: string, value: any): Promise<void> {
-  await Promise.allSettled([
-    rtdbSet(rtdbRef(primaryRealtimeDb, path), value),
-    rtdbSet(rtdbRef(secondaryRealtimeDb, path), value),
-    rtdbSet(rtdbRef(backupRealtimeDb, path), value)
-  ]);
+  const cleanPath = path.replace(/^\/+/, '');
+  const jsonBody = JSON.stringify(value === undefined ? null : value);
+
+  const restWrites = RTDB_ENDPOINTS.map(async (endpoint) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    try {
+      const res = await fetch(`${endpoint}/${cleanPath}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: jsonBody,
+        signal: controller.signal
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  const sdkWrites = [
+    rtdbSet(rtdbRef(primaryRealtimeDb, cleanPath), value),
+    rtdbSet(rtdbRef(secondaryRealtimeDb, cleanPath), value),
+    rtdbSet(rtdbRef(backupRealtimeDb, cleanPath), value)
+  ];
+
+  await Promise.allSettled([...restWrites, ...sdkWrites]);
 }
 
 /**
  * Multi RTDB Remove: removes simultaneously from Primary, Secondary, and Backup RTDB
  */
 export async function dualRtdbRemove(path: string): Promise<void> {
+  const cleanPath = path.replace(/^\/+/, '');
+
+  const restDeletes = RTDB_ENDPOINTS.map(async (endpoint) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      await fetch(`${endpoint}/${cleanPath}.json`, {
+        method: 'DELETE',
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
   await Promise.allSettled([
-    rtdbRemove(rtdbRef(primaryRealtimeDb, path)),
-    rtdbRemove(rtdbRef(secondaryRealtimeDb, path)),
-    rtdbRemove(rtdbRef(backupRealtimeDb, path))
+    ...restDeletes,
+    rtdbRemove(rtdbRef(primaryRealtimeDb, cleanPath)),
+    rtdbRemove(rtdbRef(secondaryRealtimeDb, cleanPath)),
+    rtdbRemove(rtdbRef(backupRealtimeDb, cleanPath))
   ]);
 }
 

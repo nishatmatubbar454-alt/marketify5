@@ -176,69 +176,106 @@ async function syncFromFirebase() {
     return readVideos();
   }
 
-  const [url1, url2] = getBalancedEndpoints('/videos.json');
+  const localVideos = readVideos();
+  const mergedMap = new Map<string, any>();
 
-  // Try url1, failover to url2
-  for (const url of [url1, url2]) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-      const res = await fetch(url, {
-        signal: controller.signal
-      }).finally(() => clearTimeout(timeoutId));
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data && typeof data === 'object') {
-          const validList: any[] = [];
-          const corruptedKeys: string[] = [];
-
-          for (const [id, val] of Object.entries(data)) {
-            if (!val || typeof val !== 'object' || /^\d+$/.test(id)) continue;
-            const v = val as any;
-            const hasEmbed = v.embedUrl && typeof v.embedUrl === 'string' && v.embedUrl.trim();
-            const hasWebsite = v.websiteUrl && typeof v.websiteUrl === 'string' && v.websiteUrl.trim();
-            if (!hasEmbed && !hasWebsite) {
-              corruptedKeys.push(id);
-              continue;
-            }
-            validList.push({ id, ...v });
-          }
-
-          if (corruptedKeys.length > 0) {
-            for (const badId of corruptedKeys) {
-              deleteFromFirebase(badId).catch(() => {});
-            }
-          }
-
-          validList.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
-          writeVideos(validList);
-          return validList;
-        } else if (data === null) {
-          writeVideos([]);
-          return [];
-        }
-      }
-    } catch {
-      // Continue to next endpoint on error
+  for (const v of localVideos) {
+    if (v && v.id && (v.embedUrl || v.websiteUrl)) {
+      mergedMap.set(v.id, v);
     }
   }
 
-  lastFirebaseSyncError = Date.now();
-  return readVideos();
+  let anyRemoteSuccess = false;
+  const endpointVideoIds = new Map<string, Set<string>>();
+
+  await Promise.allSettled(
+    RTDB_ENDPOINTS.map(async (base) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const res = await fetch(`${base}/videos.json`, {
+          signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
+
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data || typeof data !== 'object') return;
+
+        anyRemoteSuccess = true;
+        const validIds = new Set<string>();
+
+        for (const [id, val] of Object.entries(data)) {
+          if (!val || typeof val !== 'object' || /^\d+$/.test(id)) continue;
+          const v = val as any;
+          const hasEmbed = v.embedUrl && typeof v.embedUrl === 'string' && v.embedUrl.trim();
+          const hasWebsite = v.websiteUrl && typeof v.websiteUrl === 'string' && v.websiteUrl.trim();
+          if (!hasEmbed && !hasWebsite) {
+            // Never delete from other Firebases! Simply skip partial/orphan fragments.
+            continue;
+          }
+          validIds.add(id);
+          const candidate = { id, ...v };
+          const existing = mergedMap.get(id);
+          if (!existing) {
+            mergedMap.set(id, candidate);
+          } else {
+            const prevTime = existing.updatedAt || existing.createdAt || 0;
+            const nextTime = candidate.updatedAt || candidate.createdAt || 0;
+            if (nextTime >= prevTime) {
+              mergedMap.set(id, {
+                ...existing,
+                ...candidate,
+                thumbnailUrl: candidate.thumbnailUrl || existing.thumbnailUrl || '',
+                embedUrl: candidate.embedUrl || existing.embedUrl || '',
+                websiteUrl: candidate.websiteUrl || existing.websiteUrl || '',
+                views: Math.max(existing.views || 0, candidate.views || 0),
+                likes: Math.max(existing.likes || 0, candidate.likes || 0)
+              });
+            }
+          }
+        }
+        endpointVideoIds.set(base, validIds);
+      } catch {
+        // Ignore single-endpoint error and keep other merged records
+      }
+    })
+  );
+
+  if (!anyRemoteSuccess) {
+    lastFirebaseSyncError = Date.now();
+    return localVideos;
+  }
+
+  const validList = Array.from(mergedMap.values()).sort(
+    (a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)
+  );
+  writeVideos(validList);
+
+  // Background auto-heal: replicate any missing/corrupted videos to out-of-sync RTDBs & backup-markitify
+  for (const [base, validIds] of endpointVideoIds.entries()) {
+    const missing = validList.filter((v) => !validIds.has(v.id)).slice(0, 50);
+    for (const m of missing) {
+      fetch(`${base}/videos/${encodeURIComponent(m.id)}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(m)
+      }).catch(() => {});
+    }
+  }
+
+  return validList;
 }
 
 async function syncToFirebase(videoId: string, videoObj: any) {
   if (!videoObj || (!videoObj.embedUrl && !videoObj.websiteUrl)) return;
   const body = JSON.stringify(videoObj);
 
-  // Dual-Write to BOTH Firebase RTDB instances concurrently
+  // Multi-Write to ALL 3 Firebase RTDB instances (Primary, Secondary, Dedicated Backup) concurrently
   await Promise.allSettled(
     RTDB_ENDPOINTS.map(async (base) => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         await fetch(`${base}/videos/${encodeURIComponent(videoId)}.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -846,7 +883,8 @@ async function startServer() {
   // --- Dual Firebase Sync & Status API (Admin Protected) ---
   app.post('/api/admin/dual-sync', requireAdminAuth, async (_req, res) => {
     try {
-      const videos = readVideos();
+      // First union-merge across all 3 Firebases + local so zero videos are ever lost
+      const videos = await syncFromFirebase();
       const ads = readAds();
 
       // Ensure both Firebase instances receive the complete video & ads state

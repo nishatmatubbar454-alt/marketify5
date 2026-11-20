@@ -17,7 +17,7 @@ import {
 import { shareVideo } from '../utils/share';
 import { addHistory, getFavorites, getHistory, toggleFavorite } from '../utils/helpers';
 import { useDownloadDirectLink, DEFAULT_DOWNLOAD_LINK } from '../utils/downloadLink';
-import { loadBalancedFetch } from '../lib/firebase';
+import { fetchVideoByIdAcrossFirebases } from '../lib/firebase';
 import type { Video } from '../types';
 
 export function VideoPage() {
@@ -81,9 +81,8 @@ export function VideoPage() {
     setFetchingDirect(true);
     setNotFound(false);
 
-    // 1. Fetch exact single video directly with dual-balanced RTDB (returns in ~100ms, only ~1KB)
-    loadBalancedFetch(`/videos/${encodeURIComponent(id)}.json`)
-      .then((res) => (res.ok ? res.json() : null))
+    // 1. Fetch exact single video concurrently across ALL 3 Firebase RTDBs (returns in ~100ms, only ~1KB)
+    fetchVideoByIdAcrossFirebases(id)
       .then((data) => {
         if (!isMounted) return;
         if (data && typeof data === 'object') {

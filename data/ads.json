@@ -1,5 +1,15 @@
 [
   {
+    "id": "ad_social_bar_1794743784594",
+    "createdAt": 1794743784594,
+    "name": "Social Bar Ad #4",
+    "placement": "Public Frontend",
+    "script": "https://arwf.org/4/a9dd45ceacba879ba7dd8dd7d142cd6d",
+    "status": "on",
+    "type": "social_bar",
+    "updatedAt": 1794743801682
+  },
+  {
     "id": "banner_468x60",
     "createdAt": 1788795470287,
     "name": "468x60 Banner Ad",

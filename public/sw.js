@@ -1,4 +1,4 @@
-const CACHE_NAME = 'marketify-cache-v7';
+const CACHE_NAME = 'marketify-cache-v8';
 const STATIC_ASSETS = [
   '/manifest.json',
   '/logo-custom.png',
@@ -35,13 +35,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Don't intercept POST requests, admin auth, or dev modules
+  // Don't intercept POST requests, admin auth, dev modules, or Firebase/external APIs
   if (
     event.request.method !== 'GET' ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/src/') ||
     url.pathname.startsWith('/@') ||
-    url.pathname.includes('vite')
+    url.pathname.includes('vite') ||
+    url.hostname.includes('firebaseio.com') ||
+    url.hostname.includes('googleapis.com')
   ) {
     return;
   }

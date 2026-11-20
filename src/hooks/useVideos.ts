@@ -6,6 +6,10 @@ import { ref as rtdbRef, get as rtdbGet } from 'firebase/database';
 import {
   primaryRealtimeDb,
   secondaryRealtimeDb,
+  backupRealtimeDb,
+  RTDB_ENDPOINTS,
+  fetchRtdbJson,
+  fetchVideoByIdAcrossFirebases,
   loadBalancedFetch,
   dualRtdbSet,
   dualRtdbRemove,
@@ -84,19 +88,82 @@ function mapVideo(id: string, data: Record<string, unknown>): Video | null {
   };
 }
 
+function mergeVideos(base: Video[], incoming: Video[]): Video[] {
+  const map = new Map<string, Video>();
+  for (const v of base) {
+    if (isValidVideo(v)) {
+      map.set(v.id, v);
+    }
+  }
+  for (const v of incoming) {
+    if (!isValidVideo(v)) continue;
+    const prev = map.get(v.id);
+    if (!prev) {
+      map.set(v.id, v);
+    } else {
+      const prevTime = prev.updatedAt || prev.createdAt || 0;
+      const nextTime = v.updatedAt || v.createdAt || 0;
+      if (nextTime >= prevTime) {
+        map.set(v.id, {
+          ...prev,
+          ...v,
+          thumbnailUrl: v.thumbnailUrl || prev.thumbnailUrl || '',
+          embedUrl: v.embedUrl || prev.embedUrl || '',
+          websiteUrl: v.websiteUrl || prev.websiteUrl || '',
+          views: Math.max(prev.views || 0, v.views || 0),
+          likes: Math.max(prev.likes || 0, v.likes || 0)
+        });
+      }
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
+function parseVideoMap(val: unknown): Video[] {
+  if (!val || typeof val !== 'object') return [];
+  return Object.entries(val as Record<string, unknown>)
+    .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
+    .map(([k, v]) => mapVideo(k, v as Record<string, unknown>))
+    .filter((v: Video | null): v is Video => v !== null && isValidVideo(v));
+}
+
 function areVideosEqual(a: Video[], b: Video[]): boolean {
   if (a.length !== b.length) return false;
-  if (a.length === 0) return true;
-  return a[0].id === b[0].id && a[0].updatedAt === b[0].updatedAt && a[a.length - 1].id === b[b.length - 1].id;
+  for (let i = 0; i < a.length; i++) {
+    if (
+      a[i].id !== b[i].id ||
+      a[i].updatedAt !== b[i].updatedAt ||
+      a[i].status !== b[i].status ||
+      a[i].views !== b[i].views ||
+      a[i].likes !== b[i].likes
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Global in-memory singleton for instant 0ms access
 let sharedVideos: Video[] = getLocalVideos();
 const videoSubscribers = new Set<(videos: Video[]) => void>();
 let isVideosInitialized = false;
+let activeFirebaseSync: Promise<boolean> | null = null;
+let fullCatalogMergedOnce = false;
 
 function notifyVideoSubscribers() {
   videoSubscribers.forEach((fn) => fn(sharedVideos));
+}
+
+function applyMergedVideos(incoming: Video[]): boolean {
+  if (incoming.length === 0) return false;
+  const merged = mergeVideos(sharedVideos, incoming);
+  if (!areVideosEqual(sharedVideos, merged)) {
+    sharedVideos = merged;
+    saveLocalVideos(merged);
+    notifyVideoSubscribers();
+    return true;
+  }
+  return false;
 }
 
 function initSharedVideosListener() {
@@ -114,69 +181,145 @@ function initSharedVideosListener() {
   window.addEventListener(VIDEOS_EVENT, handleLocalSync);
   window.addEventListener('storage', handleLocalSync);
 
-  // Instantly load cached 1,500+ videos from local IndexedDB (~10-20ms)
+  // Instantly load cached videos from local IndexedDB (~10-20ms) and merge with INITIAL_VIDEOS
   getIdbVideos()
     .then((cached) => {
       if (cached && cached.length > 0) {
-        if (sharedVideos.length === 0 || sharedVideos.length < cached.length || !areVideosEqual(sharedVideos, cached)) {
-          sharedVideos = cached;
-          inMemoryVideosCache = cached;
-          notifyVideoSubscribers();
-        }
+        applyMergedVideos(cached);
       }
     })
     .catch(() => {});
 
-  // Load videos with 50/50 load balancing across himrw-fae65 and maka-bfd59
+  // Load & union-merge videos across ALL 3 Firebase RTDBs (maka-bfd59 + himrw-fae65 + backup-markitify)
   const loadVideosFromFirebase = async (): Promise<boolean> => {
-    // 1. Dual-balanced direct REST fetch (fastest, zero SDK overhead, instant failover)
-    try {
-      const res = await loadBalancedFetch('/videos.json');
-      if (res.ok) {
-        const val = await res.json();
-        if (val && typeof val === 'object') {
-          const remoteList: Video[] = Object.entries(val)
-            .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
-            .map(([k, v]) => mapVideo(k, v as Record<string, unknown>))
-            .filter((v: Video | null): v is Video => v !== null && isValidVideo(v))
-            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (activeFirebaseSync) return activeFirebaseSync;
 
-          if (remoteList.length > 0 && !areVideosEqual(sharedVideos, remoteList)) {
-            sharedVideos = remoteList;
-            saveLocalVideos(remoteList);
-            notifyVideoSubscribers();
-            return true;
-          }
-        }
-      }
-    } catch {}
-
-    // 2. Fallback to Firebase SDK rtdbGet (tries primary, then secondary)
-    for (const rtdb of [primaryRealtimeDb, secondaryRealtimeDb]) {
+    activeFirebaseSync = (async () => {
+      let updated = false;
       try {
-        const snap = await rtdbGet(rtdbRef(rtdb, 'videos'));
-        const val = snap.val();
-        if (val && typeof val === 'object') {
-          const remoteList: Video[] = Object.entries(val)
-            .filter(([k, v]) => v && typeof v === 'object' && !/^\d+$/.test(k))
-            .map(([k, v]) => mapVideo(k, v as Record<string, unknown>))
-            .filter((v: Video | null): v is Video => v !== null && isValidVideo(v))
-            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        // PHASE 1 (~400ms, ~70 KB): Fetch newest 250 videos from ALL 3 Firebases concurrently!
+        const recentResponses = await Promise.allSettled(
+          RTDB_ENDPOINTS.map((ep) =>
+            fetchRtdbJson<Record<string, unknown>>(ep, '/videos.json?orderBy=%22$key%22&limitToLast=250', 10000)
+          )
+        );
 
-          if (remoteList.length > 0 && !areVideosEqual(sharedVideos, remoteList)) {
-            sharedVideos = remoteList;
-            saveLocalVideos(remoteList);
-            notifyVideoSubscribers();
-            return true;
+        const recentBatch: Video[] = [];
+        for (const r of recentResponses) {
+          if (r.status === 'fulfilled' && r.value) {
+            recentBatch.push(...parseVideoMap(r.value));
           }
         }
-      } catch {}
-    }
+        if (recentBatch.length > 0 && applyMergedVideos(recentBatch)) {
+          updated = true;
+        }
 
-    return false;
+        // PHASE 2 (~300ms, ~60 KB): Check ALL video IDs across ALL 3 Firebases via shallow=true
+        const shallowResponses = await Promise.allSettled(
+          RTDB_ENDPOINTS.map((ep) =>
+            fetchRtdbJson<Record<string, unknown>>(ep, '/videos.json?shallow=true', 10000)
+          )
+        );
+
+        const remoteKeySet = new Set<string>();
+        for (const r of shallowResponses) {
+          if (r.status === 'fulfilled' && r.value && typeof r.value === 'object') {
+            for (const k of Object.keys(r.value)) {
+              if (!/^\d+$/.test(k)) remoteKeySet.add(k);
+            }
+          }
+        }
+
+        const currentIdSet = new Set(sharedVideos.map((v) => v.id));
+        const missingIds = Array.from(remoteKeySet).filter((id) => !currentIdSet.has(id));
+
+        if (missingIds.length > 0 && missingIds.length <= 150) {
+          // Targeted fast fetch of ONLY missing videos (avoids 20 MB re-download on mobile!)
+          const BATCH_SIZE = 15;
+          const fetchedMissing: Video[] = [];
+          for (let i = 0; i < missingIds.length; i += BATCH_SIZE) {
+            const chunk = missingIds.slice(i, i + BATCH_SIZE);
+            const results = await Promise.allSettled(
+              chunk.map(async (vidId) => {
+                const raw = await fetchVideoByIdAcrossFirebases(vidId);
+                return raw ? mapVideo(vidId, raw) : null;
+              })
+            );
+            for (const res of results) {
+              if (res.status === 'fulfilled' && res.value && isValidVideo(res.value)) {
+                fetchedMissing.push(res.value);
+              }
+            }
+          }
+          if (fetchedMissing.length > 0 && applyMergedVideos(fetchedMissing)) {
+            updated = true;
+          }
+        } else if (missingIds.length > 150 || (!fullCatalogMergedOnce && remoteKeySet.size > sharedVideos.length)) {
+          // Brand new cache or large delta: fetch full catalog with 45s timeout (never aborts at 3.5s!)
+          fullCatalogMergedOnce = true;
+          let fullLoaded = false;
+
+          // Try primary & backup REST first, then secondary
+          for (const ep of [RTDB_ENDPOINTS[0], RTDB_ENDPOINTS[2], RTDB_ENDPOINTS[1]]) {
+            const val = await fetchRtdbJson<Record<string, unknown>>(ep, '/videos.json', 45000);
+            if (val && typeof val === 'object') {
+              const list = parseVideoMap(val);
+              if (list.length > 0) {
+                if (applyMergedVideos(list)) updated = true;
+                fullLoaded = true;
+                break;
+              }
+            }
+          }
+
+          // Top up any IDs that were only in another RTDB after full fetch
+          if (fullLoaded) {
+            const updatedSet = new Set(sharedVideos.map((v) => v.id));
+            const stillMissing = Array.from(remoteKeySet).filter((id) => !updatedSet.has(id));
+            if (stillMissing.length > 0 && stillMissing.length <= 100) {
+              const extra: Video[] = [];
+              for (let i = 0; i < stillMissing.length; i += 15) {
+                const chunk = stillMissing.slice(i, i + 15);
+                const results = await Promise.allSettled(
+                  chunk.map(async (vidId) => {
+                    const raw = await fetchVideoByIdAcrossFirebases(vidId);
+                    return raw ? mapVideo(vidId, raw) : null;
+                  })
+                );
+                for (const res of results) {
+                  if (res.status === 'fulfilled' && res.value && isValidVideo(res.value)) {
+                    extra.push(res.value);
+                  }
+                }
+              }
+              if (extra.length > 0 && applyMergedVideos(extra)) {
+                updated = true;
+              }
+            }
+          } else {
+            // Last-resort SDK fallback across all 3 Firebases
+            for (const rtdb of [primaryRealtimeDb, backupRealtimeDb, secondaryRealtimeDb]) {
+              try {
+                const snap = await rtdbGet(rtdbRef(rtdb, 'videos'));
+                const list = parseVideoMap(snap.val());
+                if (list.length > 0 && applyMergedVideos(list)) {
+                  updated = true;
+                  break;
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch {} finally {
+        activeFirebaseSync = null;
+      }
+      return updated;
+    })();
+
+    return activeFirebaseSync;
   };
 
-  // 1. First try fast local Express server API fetch
+  // 1. Try local Express server API if available, AND always merge from Firebase too
   fetch('/api/videos')
     .then((res) => (res.ok ? res.json() : null))
     .then((data) => {
@@ -184,27 +327,15 @@ function initSharedVideosListener() {
         const serverVideos: Video[] = data.videos
           .map((v: any) => mapVideo(v.id, v))
           .filter((v: Video | null): v is Video => v !== null && isValidVideo(v));
-        if (!areVideosEqual(sharedVideos, serverVideos)) {
-          sharedVideos = serverVideos;
-          saveLocalVideos(serverVideos);
-          notifyVideoSubscribers();
-        }
-      } else {
-        // Express not present or returned 404 (e.g. on Cloudflare Workers / Static hosting)
-        loadVideosFromFirebase();
+        applyMergedVideos(serverVideos);
       }
     })
-    .catch(() => {
+    .catch(() => {})
+    .finally(() => {
       loadVideosFromFirebase();
     });
 
-  // Always trigger direct Firebase load if in-memory list is empty
-  if (sharedVideos.length === 0) {
-    loadVideosFromFirebase();
-  }
-
-  // 2. Gentle background conditional refresh (uses HTTP 304, zero data if unchanged)
-  let pollInterval: ReturnType<typeof setInterval> | null = null;
+  // 2. Gentle background refresh every 60s & on tab focus
   const poll = () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
       fetch('/api/videos', { cache: 'default' })
@@ -214,22 +345,17 @@ function initSharedVideosListener() {
             const serverVideos: Video[] = data.videos
               .map((v: any) => mapVideo(v.id, v))
               .filter((v: Video | null): v is Video => v !== null && isValidVideo(v));
-            if (!areVideosEqual(sharedVideos, serverVideos)) {
-              sharedVideos = serverVideos;
-              saveLocalVideos(serverVideos);
-              notifyVideoSubscribers();
-            }
-          } else {
-            loadVideosFromFirebase();
+            applyMergedVideos(serverVideos);
           }
         })
-        .catch(() => {
+        .catch(() => {})
+        .finally(() => {
           loadVideosFromFirebase();
         });
     }
   };
 
-  pollInterval = setInterval(poll, 60000);
+  setInterval(poll, 60000);
   window.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       poll();
@@ -308,9 +434,9 @@ export async function saveVideo(
   notifyVideoSubscribers();
   emitVideosUpdated();
 
-  // 2. Dual-Write Background sync to both Firebase RTDBs & server API
+  // 2. Multi-Write sync to ALL 3 Firebase RTDBs (including backup-markitify) & server API
   try {
-    dualRtdbSet(`videos/${targetId}`, videoData).catch(() => {});
+    await dualRtdbSet(`videos/${targetId}`, videoData);
   } catch {}
 
   const adminToken = typeof window !== 'undefined' ? localStorage.getItem('mk-session-token') : null;
