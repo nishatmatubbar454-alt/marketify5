@@ -89,28 +89,35 @@ function parseAdSnippet(raw: string): ParsedAdSnippet {
 export function SocialBarAds() {
   const { socialBars } = useAds();
   const { pathname } = useLocation();
-  // STRICT: Only disable ads on Admin routes (/erfan*, /admin*). Run on ALL public routes including Home ('/').
+  // Block SocialBarAds on Homepage ('/') and Admin Panel routes; run on all other public pages (/video/:id, /trending, /history, /favorites)
+  const isHomeRoute = pathname === '/' || pathname === '/index.html';
   const isAdminRoute = pathname.startsWith('/erfan') || pathname.startsWith('/admin');
+  const isBlockedRoute = isHomeRoute || isAdminRoute;
 
   const activeSocialBars = useMemo(() => {
     return socialBars.filter((ad) => ad.status === 'on' && Boolean(ad.script?.trim()));
   }, [socialBars]);
 
   const signature = useMemo(() => {
-    if (isAdminRoute) return 'blocked-admin';
+    if (isBlockedRoute) return 'blocked';
     return activeSocialBars
       .map((a) => `${a.id}:${hashString(a.script || '')}`)
       .join('||');
-  }, [isAdminRoute, activeSocialBars]);
+  }, [isBlockedRoute, activeSocialBars]);
 
   const injectedNodesRef = useRef<Map<string, HTMLElement[]>>(new Map());
   const directLinksRef = useRef<string[]>([]);
 
   useEffect(() => {
     const HOST_ID = 'mk-global-ad-host';
+    const BLOCK_STYLE_ID = 'mk-block-socialbar-overlay';
 
-    if (isAdminRoute || activeSocialBars.length === 0) {
-      // Remove all injected elements when entering Admin Panel or when all ads are off
+    if (!isBlockedRoute) {
+      document.getElementById(BLOCK_STYLE_ID)?.remove();
+    }
+
+    if (isBlockedRoute || activeSocialBars.length === 0) {
+      // Remove all injected elements when on Homepage ('/'), Admin Panel, or when all ads are off
       injectedNodesRef.current.forEach((nodes) => {
         nodes.forEach((el) => el.remove());
       });
@@ -118,6 +125,14 @@ export function SocialBarAds() {
       directLinksRef.current = [];
       const host = document.getElementById(HOST_ID);
       if (host) host.remove();
+
+      if (isBlockedRoute && !document.getElementById(BLOCK_STYLE_ID)) {
+        const styleEl = document.createElement('style');
+        styleEl.id = BLOCK_STYLE_ID;
+        styleEl.textContent =
+          'body > *:not(#root):not(script):not(style):not(link) { display: none !important; visibility: hidden !important; pointer-events: none !important; }';
+        document.head.appendChild(styleEl);
+      }
       return;
     }
 
@@ -211,11 +226,11 @@ export function SocialBarAds() {
     }
 
     directLinksRef.current = activeDirectLinks;
-  }, [signature, isAdminRoute, activeSocialBars]);
+  }, [signature, isBlockedRoute, activeSocialBars]);
 
   // Direct Link Popunder support for bare non-.js ad URLs (e.g. https://arwf.org/4/...)
   useEffect(() => {
-    if (isAdminRoute || directLinksRef.current.length === 0) return;
+    if (isBlockedRoute || directLinksRef.current.length === 0) return;
 
     const COOLDOWN_MS = 45000;
     const STORAGE_KEY = 'mk-direct-ad-last';
@@ -253,7 +268,7 @@ export function SocialBarAds() {
     return () => {
       document.removeEventListener('click', handlePublicClick, { capture: false });
     };
-  }, [signature, isAdminRoute]);
+  }, [signature, isBlockedRoute]);
 
   return null;
 }
