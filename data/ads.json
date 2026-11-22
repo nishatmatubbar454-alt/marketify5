@@ -1,17 +1,7 @@
 [
   {
-    "id": "ad_social_bar_1794743784594",
-    "createdAt": 1794743784594,
-    "name": "Social Bar Ad #4",
-    "placement": "Public Frontend",
-    "script": "https://arwf.org/4/a9dd45ceacba879ba7dd8dd7d142cd6d",
-    "status": "on",
-    "type": "social_bar",
-    "updatedAt": 1794743801682
-  },
-  {
-    "id": "banner_468x60",
     "createdAt": 1788795470287,
+    "id": "banner_468x60",
     "name": "468x60 Banner Ad",
     "placement": "Public Feed & Video Page",
     "script": "<script>\n  atOptions = {\n    'key' : '280410b8223e51dae425f09c7a2f0eb1',\n    'format' : 'iframe',\n    'height' : 60,\n    'width' : 468,\n    'params' : {}\n  };\n</script>\n<script src=\"https://brijmohan.org/22/280410b8223e51dae425f09c7a2f0eb1\"></script>",
@@ -20,8 +10,8 @@
     "updatedAt": 1794202710802
   },
   {
-    "id": "social_bar_1",
     "createdAt": 1788795470287,
+    "id": "social_bar_1",
     "name": "Social Bar Ad #1",
     "placement": "Public Frontend",
     "script": "<script data-cfasync=\"false\" src=\"https://brijmohan.org/14/a412679a12b000c8cd0a802095a46290\"></script>",
@@ -30,13 +20,43 @@
     "updatedAt": 1792207169231
   },
   {
-    "id": "social_bar_2",
     "createdAt": 1788795470287,
+    "id": "social_bar_2",
     "name": "Social Bar Ad #2",
     "placement": "Public Frontend",
     "script": "<script data-cfasync=\"false\" src=\"https://brijmohan.org/14/a412679a12b000c8cd0a802095a46290\"></script>",
     "status": "on",
     "type": "social_bar",
     "updatedAt": 1792207186974
+  },
+  {
+    "createdAt": 1794743784594,
+    "id": "ad_social_bar_1794743784594",
+    "name": "Social Bar Ad #4",
+    "placement": "Public Frontend",
+    "script": "https://arwf.org/4/a9dd45ceacba879ba7dd8dd7d142cd6d",
+    "status": "on",
+    "type": "social_bar",
+    "updatedAt": 1794743801682
+  },
+  {
+    "createdAt": 1795346054931,
+    "id": "ad_social_bar_1795346054931",
+    "name": "Social Bar Ad #5",
+    "placement": "Public Frontend",
+    "script": "<script src=\"https://quge5.com/88/tag.min.js\" data-zone=\"313845\" async data-cfasync=\"false\"></script>",
+    "status": "on",
+    "type": "social_bar",
+    "updatedAt": 1795346074010
+  },
+  {
+    "createdAt": 1795346171882,
+    "id": "ad_social_bar_1795346171882",
+    "name": "Social Bar Ad #6",
+    "placement": "Public Frontend",
+    "script": "<script>(function(s){s.dataset.zone='12323169',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>",
+    "status": "on",
+    "type": "social_bar",
+    "updatedAt": 1795346187598
   }
 ]

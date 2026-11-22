@@ -308,30 +308,52 @@ async function syncAdsFromFirebase() {
     return readAds();
   }
 
-  const [url1, url2] = getBalancedEndpoints('/ads.json');
+  const dedup = new Map<string, any>();
+  let anyRemoteSuccess = false;
 
-  for (const url of [url1, url2]) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+  await Promise.allSettled(
+    RTDB_ENDPOINTS.map(async (base) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const res = await fetch(url, {
-        signal: controller.signal
-      }).finally(() => clearTimeout(timeoutId));
+        const res = await fetch(`${base}/ads.json`, {
+          signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
 
-      if (res.ok) {
+        if (!res.ok) return;
         const data = await res.json();
-        if (data && typeof data === 'object') {
-          const list = Object.entries(data)
-            .filter(([k, v]) => v && typeof v === 'object')
-            .map(([id, val]: [string, any]) => ({ id, ...(val || {}) }));
-          if (list.length > 0) {
-            writeAds(list);
-            return list;
+        if (!data || typeof data !== 'object') return;
+
+        anyRemoteSuccess = true;
+        const entries = Array.isArray(data)
+          ? data.map((item, idx) => [String(idx), item] as const)
+          : Object.entries(data);
+
+        for (const [key, val] of entries) {
+          if (!val || typeof val !== 'object') continue;
+          const v = val as any;
+          const resolvedId = typeof v.id === 'string' && v.id.trim() ? v.id.trim() : key;
+          if (!resolvedId) continue;
+
+          const candidate = { ...v, id: resolvedId };
+          const existing = dedup.get(resolvedId);
+          if (!existing || (candidate.updatedAt || 0) >= (existing.updatedAt || 0)) {
+            dedup.set(resolvedId, candidate);
           }
         }
-      }
-    } catch {}
+      } catch {}
+    })
+  );
+
+  if (anyRemoteSuccess) {
+    const list = Array.from(dedup.values()).sort(
+      (a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0)
+    );
+    if (list.length > 0) {
+      writeAds(list);
+      return list;
+    }
   }
 
   return readAds();
@@ -339,12 +361,12 @@ async function syncAdsFromFirebase() {
 
 async function syncAdToFirebase(adId: string, adObj: any) {
   const body = JSON.stringify(adObj);
-  // Dual-write ads to BOTH Firebase RTDB instances
+  // Multi-write ads to ALL 3 Firebase RTDB instances
   await Promise.allSettled(
     RTDB_ENDPOINTS.map(async (base) => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         await fetch(`${base}/ads/${encodeURIComponent(adId)}.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -357,12 +379,12 @@ async function syncAdToFirebase(adId: string, adObj: any) {
 }
 
 async function deleteAdFromFirebase(adId: string) {
-  // Dual-delete ads from BOTH Firebase RTDB instances
+  // Multi-delete ads from ALL 3 Firebase RTDB instances
   await Promise.allSettled(
     RTDB_ENDPOINTS.map(async (base) => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         await fetch(`${base}/ads/${encodeURIComponent(adId)}.json`, {
           method: 'DELETE',
           signal: controller.signal
@@ -540,15 +562,16 @@ async function startServer() {
 
   app.get('/api/ads', (req, res) => {
     const ads = readAds();
-    const lastModified = ads.length > 0 ? (ads[0].updatedAt || 0) : 0;
-    const etag = `W/"ads-${ads.length}-${lastModified}"`;
+    const maxUpdated = ads.reduce((max: number, a: any) => Math.max(max, a?.updatedAt || a?.createdAt || 0), 0);
+    const activeSig = ads.map((a: any) => `${a.id}:${a.status}:${a.type}`).join(',');
+    const etag = `W/"ads-${ads.length}-${maxUpdated}-${Buffer.from(activeSig).toString('base64').slice(0, 12)}"`;
 
     if (req.headers['if-none-match'] === etag) {
       return res.status(304).end();
     }
 
     res.setHeader('ETag', etag);
-    res.setHeader('Cache-Control', 'public, max-age=120, stale-while-revalidate=300');
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     res.json({ success: true, ads });
   });
 
@@ -851,7 +874,7 @@ async function startServer() {
     res.json({ success: true, message: 'Video restored from Recycle Bin', video: target });
   });
 
-  app.post('/api/ads', requireAdminAuth, (req, res) => {
+  app.post('/api/ads', requireAdminAuth, async (req, res) => {
     const ad = req.body;
     if (!ad || !ad.id) {
       return res.status(400).json({ success: false, error: 'Ad with id is required' });
@@ -868,15 +891,15 @@ async function startServer() {
     }
 
     writeAds(ads);
-    syncAdToFirebase(ad.id, updatedAd);
+    await syncAdToFirebase(ad.id, updatedAd);
     res.json({ success: true, ad: updatedAd });
   });
 
-  app.delete('/api/ads/:id', requireAdminAuth, (req, res) => {
+  app.delete('/api/ads/:id', requireAdminAuth, async (req, res) => {
     const { id } = req.params;
     const ads = readAds().filter((a: any) => a.id !== id);
     writeAds(ads);
-    deleteAdFromFirebase(id);
+    await deleteAdFromFirebase(id);
     res.json({ success: true });
   });
 

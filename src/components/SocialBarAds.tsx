@@ -1,120 +1,259 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAds } from '../hooks/useAds';
 
-interface ParsedScript {
-  src?: string;
+interface ParsedScriptNode {
+  attrs: Record<string, string>;
   code?: string;
-  type?: string;
 }
 
-function parseScriptString(raw: string): ParsedScript[] {
+interface ParsedAdSnippet {
+  scripts: ParsedScriptNode[];
+  htmlNodesMarkup: string;
+  directLinkUrl?: string;
+}
+
+function hashString(input: string): string {
+  let hash = 5381;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function isLikelyJsUrl(url: string): boolean {
+  const lower = url.toLowerCase().split('?')[0];
+  return (
+    lower.endsWith('.js') ||
+    lower.endsWith('.mjs') ||
+    lower.includes('tag.min.js') ||
+    lower.includes('invoke.js') ||
+    lower.includes('brijmohan.org')
+  );
+}
+
+function parseAdSnippet(raw: string): ParsedAdSnippet {
   const trimmed = raw.trim();
-  if (!trimmed) return [];
+  if (!trimmed) {
+    return { scripts: [], htmlNodesMarkup: '' };
+  }
 
-  // Check if it contains <script> tags
-  if (trimmed.includes('<script')) {
-    const results: ParsedScript[] = [];
-    const div = document.createElement('div');
-    div.innerHTML = trimmed;
-    const scriptTags = div.querySelectorAll('script');
+  // Case 1: Contains HTML / <script> / <ins> / <div> / <a> / <iframe>
+  if (trimmed.includes('<')) {
+    const scripts: ParsedScriptNode[] = [];
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = trimmed;
+
+    const scriptTags = Array.from(wrapper.querySelectorAll('script'));
     scriptTags.forEach((s) => {
-      const src = s.getAttribute('src');
-      const code = s.textContent || '';
-      const type = s.getAttribute('type') || 'text/javascript';
-      if (src || code.trim()) {
-        results.push({ src: src || undefined, code: code.trim() || undefined, type });
+      const attrs: Record<string, string> = {};
+      Array.from(s.attributes).forEach((attr) => {
+        attrs[attr.name] = attr.value;
+      });
+      const code = (s.textContent || '').trim();
+      if (attrs.src || code) {
+        scripts.push({ attrs, code: code || undefined });
       }
+      s.remove();
     });
-    return results;
+
+    const htmlNodesMarkup = wrapper.innerHTML.trim();
+    return { scripts, htmlNodesMarkup };
   }
 
-  // If it's a bare URL (e.g. https://... or //...)
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('//')) {
-    return [{ src: trimmed, type: 'text/javascript' }];
+  // Case 2: Bare URL (either a JS tag URL or a Direct Link / Popunder URL)
+  if (/^(https?:)?\/\/[^\s<>"']+$/i.test(trimmed)) {
+    const normalizedUrl = trimmed.startsWith('//') ? `https:${trimmed}` : trimmed;
+    if (isLikelyJsUrl(normalizedUrl)) {
+      return {
+        scripts: [{ attrs: { src: normalizedUrl, async: 'true', 'data-cfasync': 'false' } }],
+        htmlNodesMarkup: ''
+      };
+    }
+    // Non-.js bare URL (e.g., Monetag/Adsterra Direct Link like https://arwf.org/4/...)
+    // Load as script in case it's cloaked JS, AND also register clean click-trigger direct link support
+    return {
+      scripts: [{ attrs: { src: normalizedUrl, async: 'true', 'data-cfasync': 'false' } }],
+      htmlNodesMarkup: '',
+      directLinkUrl: normalizedUrl
+    };
   }
 
-  // Otherwise treat as raw inline JavaScript
-  return [{ code: trimmed, type: 'text/javascript' }];
+  // Case 3: Raw inline JavaScript (without <script> tags)
+  return {
+    scripts: [{ attrs: { type: 'text/javascript' }, code: trimmed }],
+    htmlNodesMarkup: ''
+  };
 }
 
 export function SocialBarAds() {
   const { socialBars } = useAds();
   const { pathname } = useLocation();
-  const isHomeRoute = pathname === '/';
+  // STRICT: Only disable ads on Admin routes (/erfan*, /admin*). Run on ALL public routes including Home ('/').
   const isAdminRoute = pathname.startsWith('/erfan') || pathname.startsWith('/admin');
-  const isBlockedRoute = isHomeRoute || isAdminRoute;
 
-  // Filter active social bars
   const activeSocialBars = useMemo(() => {
-    return socialBars.filter((ad) => ad.status === 'on' && ad.script?.trim());
+    return socialBars.filter((ad) => ad.status === 'on' && Boolean(ad.script?.trim()));
   }, [socialBars]);
 
-  // Create a serialized string signature so effect only triggers when actual ads change or route changes
   const signature = useMemo(() => {
-    return `${isBlockedRoute ? 'blocked' : 'allowed'}:${activeSocialBars.map((a) => `${a.id}:${a.script}`).join('||')}`;
-  }, [isBlockedRoute, activeSocialBars]);
+    if (isAdminRoute) return 'blocked-admin';
+    return activeSocialBars
+      .map((a) => `${a.id}:${hashString(a.script || '')}`)
+      .join('||');
+  }, [isAdminRoute, activeSocialBars]);
 
-  const injectedElementsRef = useRef<HTMLElement[]>([]);
+  const injectedNodesRef = useRef<Map<string, HTMLElement[]>>(new Map());
+  const directLinksRef = useRef<string[]>([]);
 
   useEffect(() => {
-    // CRITICAL: Block popup ads on Home Feed ('/') and Admin Panel
-    if (isBlockedRoute || activeSocialBars.length === 0) {
-      // Clean up any previously injected social bar scripts
-      injectedElementsRef.current.forEach((el) => el.remove());
-      injectedElementsRef.current = [];
+    const HOST_ID = 'mk-global-ad-host';
+
+    if (isAdminRoute || activeSocialBars.length === 0) {
+      // Remove all injected elements when entering Admin Panel or when all ads are off
+      injectedNodesRef.current.forEach((nodes) => {
+        nodes.forEach((el) => el.remove());
+      });
+      injectedNodesRef.current.clear();
+      directLinksRef.current = [];
+      const host = document.getElementById(HOST_ID);
+      if (host) host.remove();
       return;
     }
 
-    const currentInjected: HTMLElement[] = [];
+    const desiredKeys = new Set<string>();
+    const activeDirectLinks: string[] = [];
+
+    // Ensure a non-React host container exists for non-script HTML ad containers (e.g., <div id="container-...">)
+    let htmlHost = document.getElementById(HOST_ID);
+    if (!htmlHost) {
+      htmlHost = document.createElement('div');
+      htmlHost.id = HOST_ID;
+      htmlHost.style.display = 'contents';
+      document.body.appendChild(htmlHost);
+    }
 
     activeSocialBars.forEach((ad) => {
-      const parsedList = parseScriptString(ad.script);
+      const parsed = parseAdSnippet(ad.script);
+      const adHash = hashString(ad.script);
 
-      parsedList.forEach((parsed, index) => {
-        const uniqueKey = `sb-ad-${ad.id}-${index}`;
-        // Check if an identical script tag is already in the document
-        const existing = document.querySelector(`[data-socialbar-key="${uniqueKey}"]`);
-        if (existing) {
-          currentInjected.push(existing as HTMLElement);
+      if (parsed.directLinkUrl) {
+        activeDirectLinks.push(parsed.directLinkUrl);
+      }
+
+      // 1. Mount any HTML container nodes BEFORE running scripts that reference them
+      if (parsed.htmlNodesMarkup) {
+        const htmlKey = `sb-html-${ad.id}-${adHash}`;
+        desiredKeys.add(htmlKey);
+        if (!injectedNodesRef.current.has(htmlKey)) {
+          const box = document.createElement('div');
+          box.dataset.socialbarKey = htmlKey;
+          box.dataset.adId = ad.id;
+          box.innerHTML = parsed.htmlNodesMarkup;
+          htmlHost!.appendChild(box);
+          injectedNodesRef.current.set(htmlKey, [box]);
+        }
+      }
+
+      // 2. Mount all <script> tags preserving all custom attributes (data-zone, data-cfasync, etc.)
+      parsed.scripts.forEach((scriptNode, index) => {
+        const uniqueKey = `sb-js-${ad.id}-${index}-${adHash}`;
+        desiredKeys.add(uniqueKey);
+
+        if (injectedNodesRef.current.has(uniqueKey)) {
+          return;
+        }
+        const existingInDom = document.querySelector(`[data-socialbar-key="${uniqueKey}"]`) as HTMLElement | null;
+        if (existingInDom) {
+          injectedNodesRef.current.set(uniqueKey, [existingInDom]);
           return;
         }
 
         const scriptEl = document.createElement('script');
-        scriptEl.type = parsed.type || 'text/javascript';
+        Object.entries(scriptNode.attrs).forEach(([attrName, attrVal]) => {
+          if (attrName.toLowerCase() === 'src') {
+            const normalizedSrc = attrVal.startsWith('//') ? `https:${attrVal}` : attrVal;
+            scriptEl.setAttribute('src', normalizedSrc);
+          } else {
+            scriptEl.setAttribute(attrName, attrVal);
+          }
+        });
+
+        if (!scriptEl.type) {
+          scriptEl.type = 'text/javascript';
+        }
         scriptEl.dataset.socialbarKey = uniqueKey;
         scriptEl.dataset.adId = ad.id;
-        scriptEl.async = true;
 
-        if (parsed.src) {
-          let src = parsed.src;
-          if (src.startsWith('//')) {
-            src = `https:${src}`;
-          }
-          scriptEl.src = src;
-        }
-
-        if (parsed.code) {
-          scriptEl.text = parsed.code;
+        if (scriptNode.code) {
+          scriptEl.text = scriptNode.code;
         }
 
         scriptEl.onerror = () => {
-          // Suppress ad network load failures silently
+          // Suppress third-party ad network load errors silently
         };
 
         try {
-          (document.head || document.body).appendChild(scriptEl);
-          currentInjected.push(scriptEl);
-        } catch (err) {
-          // Fail gracefully without crashing
+          (document.body || document.head).appendChild(scriptEl);
+          injectedNodesRef.current.set(uniqueKey, [scriptEl]);
+        } catch {
+          // Fail gracefully
         }
       });
     });
 
-    injectedElementsRef.current = currentInjected;
-  }, [signature, isBlockedRoute, activeSocialBars]);
+    // Clean up stale / edited / disabled ad nodes
+    for (const [key, nodes] of injectedNodesRef.current.entries()) {
+      if (!desiredKeys.has(key)) {
+        nodes.forEach((el) => el.remove());
+        injectedNodesRef.current.delete(key);
+      }
+    }
+
+    directLinksRef.current = activeDirectLinks;
+  }, [signature, isAdminRoute, activeSocialBars]);
+
+  // Direct Link Popunder support for bare non-.js ad URLs (e.g. https://arwf.org/4/...)
+  useEffect(() => {
+    if (isAdminRoute || directLinksRef.current.length === 0) return;
+
+    const COOLDOWN_MS = 45000;
+    const STORAGE_KEY = 'mk-direct-ad-last';
+
+    const handlePublicClick = (e: MouseEvent) => {
+      const links = directLinksRef.current;
+      if (!links.length) return;
+
+      // Never hijack admin links or interactive buttons inside header/nav/player controls unless normal browse tap
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-no-popunder="true"]')) return;
+
+      try {
+        const last = Number(sessionStorage.getItem(STORAGE_KEY) || '0');
+        if (Date.now() - last < COOLDOWN_MS) return;
+
+        const idx = Number(sessionStorage.getItem(`${STORAGE_KEY}-idx`) || '0') % links.length;
+        const url = links[idx];
+        sessionStorage.setItem(STORAGE_KEY, String(Date.now()));
+        sessionStorage.setItem(`${STORAGE_KEY}-idx`, String(idx + 1));
+
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        anchor.style.display = 'none';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } catch {}
+    };
+
+    document.addEventListener('click', handlePublicClick, { capture: false });
+    return () => {
+      document.removeEventListener('click', handlePublicClick, { capture: false });
+    };
+  }, [signature, isAdminRoute]);
 
   return null;
 }
-
-
